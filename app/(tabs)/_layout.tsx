@@ -1,35 +1,65 @@
+
 import { Tabs } from 'expo-router';
 import React from 'react';
+import { StyleSheet } from 'react-native';
+import Icon from '../../components/Icon';
+import { Colors } from '../../theme';
 
-import { HapticTab } from '@/components/haptic-tab';
-import { IconSymbol } from '@/components/ui/icon-symbol';
-import { Colors } from '@/constants/theme';
-import { useColorScheme } from '@/hooks/use-color-scheme';
+const TabBarIcon = ({ name, color }: { name: React.ComponentProps<typeof Icon>['name'], color: string }) => {
+  return <Icon name={name} size={24} color={color} />;
+};
 
 export default function TabLayout() {
-  const colorScheme = useColorScheme();
-
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
         headerShown: false,
-        tabBarButton: HapticTab,
-      }}>
+        tabBarActiveTintColor: Colors.primary,
+        tabBarInactiveTintColor: Colors.textMuted,
+        tabBarStyle: {
+          backgroundColor: Colors.backgroundDark,
+          borderTopColor: Colors.border,
+          height: 85,
+          paddingBottom: 25,
+        },
+        tabBarLabelStyle: styles.tabLabel,
+      }}
+    >
       <Tabs.Screen
-        name="index"
+        name="dashboard"
         options={{
-          title: 'Home',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={color} />,
+          title: 'Início',
+          tabBarIcon: ({ color }) => <TabBarIcon name="dashboard" color={color} />,
         }}
       />
       <Tabs.Screen
-        name="explore"
+        name="schedule"
         options={{
-          title: 'Explore',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="paperplane.fill" color={color} />,
+          title: 'Agenda',
+          tabBarIcon: ({ color }) => <TabBarIcon name="calendar-today" color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="members"
+        options={{
+          title: 'Membros',
+          tabBarIcon: ({ color }) => <TabBarIcon name="person-search" color={color} />,
+        }}
+      />
+       <Tabs.Screen
+        name="settings"
+        options={{
+          title: 'Ajustes',
+          tabBarIcon: ({ color }) => <TabBarIcon name="settings" color={color} />,
         }}
       />
     </Tabs>
   );
 }
+
+const styles = StyleSheet.create({
+    tabLabel: {
+        fontSize: 10,
+        fontWeight: 'bold',
+    }
+});

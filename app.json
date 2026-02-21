@@ -1,12 +1,24 @@
 {
   "expo": {
-    "name": "cftvk@latest",
-    "slug": "cftvk@latest",
+    "name": "cftvk-app",
+    "slug": "cftvk-app",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "cftvklatest",
-    "userInterfaceStyle": "automatic",
+    "scheme": "cftvkapp",
+    "userInterfaceStyle": "dark",
+
+
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#1a1a1a"
+    },
+        "assetBundlePatterns": [
+      "**/*"
+    ],
+
+
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true

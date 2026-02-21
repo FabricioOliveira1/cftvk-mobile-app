@@ -41,3 +41,14 @@ app-example
 # generated native folders
 /ios
 /android
+
+# Firebase
+.firebase/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+functions/.env
+functions/.env.local
+functions/.runtimeconfig.json
+
+/CFTVK_Documento_Base.md
