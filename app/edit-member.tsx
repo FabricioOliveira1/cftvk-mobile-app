@@ -28,6 +28,20 @@ const PERFIS: { label: string; value: UserRole }[] = [
   { label: 'Coach', value: 'coach' },
 ];
 
+const formatPhone = (value: string) => {
+  const digits = value.replace(/\D/g, '').slice(0, 11);
+  if (digits.length <= 2) return digits.length ? `(${digits}` : '';
+  if (digits.length <= 7) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
+  return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+};
+
+const formatBirthDate = (value: string) => {
+  const digits = value.replace(/\D/g, '').slice(0, 8);
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+  return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+};
+
 const EditMemberScreen: React.FC = () => {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id?: string }>();
@@ -199,6 +213,8 @@ const EditMemberScreen: React.FC = () => {
                   placeholder="E-mail"
                   keyboardType="email-address"
                   autoCapitalize="none"
+                  autoComplete="email"
+                  textContentType="emailAddress"
                   editable={!isEditing}
                 />
               </View>
@@ -225,10 +241,11 @@ const EditMemberScreen: React.FC = () => {
                   <TextInput
                     style={styles.input}
                     value={phone}
-                    onChangeText={setPhone}
+                    onChangeText={(v) => setPhone(formatPhone(v))}
                     placeholderTextColor={Colors.textMuted}
                     placeholder="(11) 98877-6655"
                     keyboardType="phone-pad"
+                    maxLength={15}
                   />
                 </View>
               </View>
@@ -238,9 +255,11 @@ const EditMemberScreen: React.FC = () => {
                   <TextInput
                     style={styles.input}
                     value={birthDate}
-                    onChangeText={setBirthDate}
+                    onChangeText={(v) => setBirthDate(formatBirthDate(v))}
                     placeholderTextColor={Colors.textMuted}
                     placeholder="DD/MM/AAAA"
+                    keyboardType="numeric"
+                    maxLength={10}
                   />
                   <Icon name="calendar-today" size={18} color={Colors.textMuted} style={styles.inputRightIcon} />
                 </View>
