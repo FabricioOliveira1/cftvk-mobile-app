@@ -43,6 +43,7 @@ app-example
 /android
 
 # Firebase
+src/services/firebase.ts
 .firebase/
 firebase-debug.log
 firestore-debug.log
