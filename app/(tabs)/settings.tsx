@@ -1,5 +1,5 @@
-import { Stack, useRouter } from 'expo-router';
-import React from 'react';
+import { Stack, useFocusEffect, useRouter } from 'expo-router';
+import React, { useCallback } from 'react';
 import { SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Icon from '../../components/Icon';
 import { useAuth } from '../../src/context';
@@ -19,9 +19,15 @@ const roleColor = (role?: string) => {
 
 const ProfileScreen: React.FC = () => {
   const router = useRouter();
-  const { appUser, signOut } = useAuth();
+  const { appUser, signOut, refreshAppUser } = useAuth();
 
   const tagColor = roleColor(appUser?.role);
+
+  useFocusEffect(
+    useCallback(() => {
+      refreshAppUser();
+    }, [refreshAppUser])
+  );
 
   const handleLogout = async () => {
     await signOut();
