@@ -5,6 +5,7 @@ import {
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   ScrollView,
   StyleSheet,
@@ -42,6 +43,7 @@ const EditMemberScreen: React.FC = () => {
   const [role, setRole] = useState<UserRole>('student');
   const [loading, setLoading] = useState(isEditing);
   const [saving, setSaving] = useState(false);
+  const [removing, setRemoving] = useState(false);
 
   const screenTitle = isEditing ? 'Editar Aluno' : 'Novo Aluno';
   const displayId = isEditing && id ? `#${id.slice(-5)}` : '—';
@@ -114,10 +116,12 @@ const EditMemberScreen: React.FC = () => {
           text: 'Sim',
           style: 'destructive',
           onPress: async () => {
+            setRemoving(true);
             try {
               await deleteMember(id);
               router.replace('/(tabs)/members');
             } catch {
+              setRemoving(false);
               Alert.alert('Erro', 'Não foi possível remover o aluno.');
             }
           },
@@ -304,6 +308,15 @@ const EditMemberScreen: React.FC = () => {
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
+
+      <Modal visible={removing} transparent animationType="fade">
+        <View style={styles.loadingOverlay}>
+          <View style={styles.loadingBox}>
+            <ActivityIndicator size="large" color={Colors.primary} />
+            <Text style={styles.loadingText}>Removendo aluno...</Text>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -412,6 +425,20 @@ const styles = StyleSheet.create({
     borderRadius: 16,
   },
   saveButtonText: { color: Colors.backgroundDark, fontFamily: Fonts.sansBold, fontSize: 16 },
+  loadingOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingBox: {
+    backgroundColor: Colors.cardDark,
+    borderRadius: 16,
+    padding: 32,
+    alignItems: 'center',
+    gap: 16,
+  },
+  loadingText: { color: Colors.white, fontFamily: Fonts.sansMedium, fontSize: 15 },
 });
 
 export default EditMemberScreen;
