@@ -21,6 +21,28 @@ export const deleteUser = onCall(async (request) => {
   await admin.firestore().doc(`users/${uid}`).delete();
 });
 
+export const createUser = onCall(async (request) => {
+  const { name, email, password, role } = request.data as {
+    name: string;
+    email: string;
+    password: string;
+    role: string;
+  };
+
+  if (!name || !email || !password || !role) {
+    throw new HttpsError('invalid-argument', 'Todos os campos são obrigatórios.');
+  }
+
+  const userRecord = await admin.auth().createUser({ email, password, displayName: name });
+
+  await admin.firestore().doc(`users/${userRecord.uid}`).set({
+    name,
+    email,
+    role,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+});
+
 
 // Start writing functions
 // https://firebase.google.com/docs/functions/typescript
