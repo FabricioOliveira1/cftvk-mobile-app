@@ -1,8 +1,11 @@
 import { Stack, useFocusEffect, useRouter } from 'expo-router';
-import React, { useCallback } from 'react';
-import { SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { doc, getDoc } from 'firebase/firestore';
+import React, { useCallback, useState } from 'react';
+import { ActivityIndicator, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Icon from '../../components/Icon';
 import { useAuth } from '../../src/context';
+import { db } from '../../src/services/firebase';
+import { AppUser } from '../../src/types';
 import { Colors, Fonts } from '../../theme';
 
 const roleLabel = (role?: string) => {
@@ -19,20 +22,46 @@ const roleColor = (role?: string) => {
 
 const ProfileScreen: React.FC = () => {
   const router = useRouter();
-  const { appUser, signOut, refreshAppUser } = useAuth();
+  const { appUser, signOut } = useAuth();
 
-  const tagColor = roleColor(appUser?.role);
+  const [profileData, setProfileData] = useState<AppUser | null>(null);
+  const [refreshing, setRefreshing] = useState(true);
 
   useFocusEffect(
     useCallback(() => {
-      refreshAppUser();
-    }, [refreshAppUser])
+      if (!appUser?.id) return;
+      setRefreshing(true);
+      getDoc(doc(db, 'users', appUser.id))
+        .then((snap) => {
+          if (snap.exists()) setProfileData({ id: snap.id, ...snap.data() } as AppUser);
+        })
+        .finally(() => setRefreshing(false));
+    }, [appUser?.id])
   );
 
   const handleLogout = async () => {
     await signOut();
-    // Navigation handled by route guard in _layout.tsx
   };
+
+  const tagColor = roleColor(profileData?.role);
+
+  if (refreshing && !profileData) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <Stack.Screen
+          options={{
+            headerShown: true,
+            headerStyle: { backgroundColor: Colors.backgroundDark },
+            headerTintColor: Colors.white,
+            headerTitle: 'Meu Perfil',
+            headerTitleAlign: 'center',
+            headerShadowVisible: false,
+          }}
+        />
+        <ActivityIndicator color={Colors.primary} style={{ marginTop: 60 }} />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -56,9 +85,9 @@ const ProfileScreen: React.FC = () => {
               <Icon name="verified" size={16} color={Colors.backgroundDark} />
             </View>
           </View>
-          <Text style={styles.name}>{appUser?.name ?? '—'}</Text>
+          <Text style={styles.name}>{profileData?.name ?? '—'}</Text>
           <View style={[styles.tag, { backgroundColor: `${tagColor}20`, borderColor: `${tagColor}30` }]}>
-            <Text style={[styles.tagText, { color: tagColor }]}>{roleLabel(appUser?.role)}</Text>
+            <Text style={[styles.tagText, { color: tagColor }]}>{roleLabel(profileData?.role)}</Text>
           </View>
           <TouchableOpacity
             style={styles.editButton}
@@ -75,7 +104,7 @@ const ProfileScreen: React.FC = () => {
               <Icon name="mail" size={20} color={Colors.slate[500]} />
               <View style={styles.cardTextContainer}>
                 <Text style={styles.cardLabel}>Email</Text>
-                <Text style={styles.cardValue}>{appUser?.email ?? '—'}</Text>
+                <Text style={styles.cardValue}>{profileData?.email ?? '—'}</Text>
               </View>
             </View>
           </View>
