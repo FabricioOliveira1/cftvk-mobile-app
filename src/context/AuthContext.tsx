@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState } from 'react';
 import { onAuthStateChanged, signOut as firebaseSignOut, User as FirebaseUser } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../services/firebase';
@@ -9,7 +9,6 @@ interface AuthContextValue {
   appUser: AppUser | null;
   loading: boolean;
   signOut: () => Promise<void>;
-  refreshAppUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -44,20 +43,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return unsubscribe;
   }, []);
 
-  const refreshAppUser = useCallback(async () => {
-    if (!firebaseUser) return;
-    const userSnap = await getDoc(doc(db, 'users', firebaseUser.uid));
-    if (userSnap.exists()) {
-      setAppUser({ id: userSnap.id, ...userSnap.data() } as AppUser);
-    }
-  }, [firebaseUser]);
-
   const signOut = async () => {
     await firebaseSignOut(auth);
   };
 
   return (
-    <AuthContext.Provider value={{ firebaseUser, appUser, loading, signOut, refreshAppUser }}>
+    <AuthContext.Provider value={{ firebaseUser, appUser, loading, signOut }}>
       {children}
     </AuthContext.Provider>
   );

@@ -1,4 +1,3 @@
-import { createUserWithEmailAndPassword } from 'firebase/auth';
 import {
   collection,
   doc,
@@ -8,8 +7,7 @@ import {
   where,
 } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
-import { auth, db, functions } from './firebase';
-import { createUserProfile } from './userService';
+import { db, functions } from './firebase';
 import { AppUser, UserRole } from '../types';
 
 export async function getMembers(): Promise<AppUser[]> {
@@ -41,6 +39,6 @@ export async function createMember(
   role: UserRole,
   password: string
 ): Promise<void> {
-  const { user } = await createUserWithEmailAndPassword(auth, email.trim(), password);
-  await createUserProfile(user.uid, { name: name.trim(), email: email.trim(), role });
+  const createUser = httpsCallable(functions, 'createUser');
+  await createUser({ name: name.trim(), email: email.trim(), password, role });
 }
