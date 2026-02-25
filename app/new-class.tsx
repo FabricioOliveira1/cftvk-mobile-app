@@ -5,6 +5,7 @@ import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
   Modal,
   PanResponder,
   Platform,
@@ -342,6 +343,10 @@ const NewClassScreen: React.FC = () => {
       {loadingClass ? (
         <ActivityIndicator color={Colors.primary} style={{ marginTop: 60 }} />
       ) : (
+        <KeyboardAvoidingView
+          style={styles.flex}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
         <ScrollView
           style={styles.flex}
           contentContainerStyle={styles.scrollContent}
@@ -462,6 +467,7 @@ const NewClassScreen: React.FC = () => {
               </View>
             </View>
         </ScrollView>
+        </KeyboardAvoidingView>
       )}
 
       <DatePickerModal
@@ -484,7 +490,7 @@ const NewClassScreen: React.FC = () => {
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: Colors.backgroundDark },
   flex: { flex: 1 },
-  scrollContent: { flexGrow: 1, paddingBottom: 40 },
+  scrollContent: { flexGrow: 1, paddingBottom: 80 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
