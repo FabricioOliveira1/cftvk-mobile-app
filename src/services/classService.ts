@@ -1,6 +1,7 @@
 import {
   addDoc,
   collection,
+  deleteDoc,
   doc,
   getDocs,
   query,
@@ -32,6 +33,10 @@ export async function updateClass(
   payload: Partial<NewClassPayload>
 ): Promise<void> {
   await updateDoc(doc(db, 'classes', id), payload);
+}
+
+export async function deleteClass(id: string): Promise<void> {
+  await deleteDoc(doc(db, 'classes', id));
 }
 
 export async function getMemberCount(): Promise<number> {
