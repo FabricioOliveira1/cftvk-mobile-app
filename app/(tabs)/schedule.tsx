@@ -1,7 +1,9 @@
-import { Stack, useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import { Stack, useFocusEffect, useRouter } from 'expo-router';
+import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
+  RefreshControl,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -12,7 +14,14 @@ import {
 import ClassListItem from '../../components/ClassListItem';
 import FAB from '../../components/FAB';
 import Icon from '../../components/Icon';
-import { getClassesByDate, getReservationCount } from '../../src/services';
+import { useAuth } from '../../src/context';
+import {
+  cancelReservation,
+  createReservation,
+  getClassesByDate,
+  getReservationCount,
+  getUserReservationForClass,
+} from '../../src/services';
 import { Class } from '../../src/types';
 import { Colors, Fonts } from '../../theme';
 
@@ -42,37 +51,108 @@ const todayString = new Date().toISOString().split('T')[0];
 
 const ScheduleScreen: React.FC = () => {
   const router = useRouter();
+  const { appUser } = useAuth();
 
   const [days] = useState<DayItem[]>(getWeekDays());
   const [selectedDate, setSelectedDate] = useState<string>(todayString);
   const [classes, setClasses] = useState<Class[]>([]);
   const [reservationCounts, setReservationCounts] = useState<Record<string, number>>({});
+  const [userReservations, setUserReservations] = useState<Record<string, string>>({}); // classId → reservationId
+  const [reservingClassId, setReservingClassId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    const load = async () => {
-      setLoading(true);
-      try {
-        const fetched = await getClassesByDate(selectedDate);
-        setClasses(fetched);
+  const load = useCallback(async (isRefresh = false) => {
+    if (isRefresh) setRefreshing(true);
+    else setLoading(true);
+    try {
+      const fetched = await getClassesByDate(selectedDate);
+      setClasses(fetched);
 
-        if (fetched.length > 0) {
-          const counts = await Promise.all(
+      if (fetched.length > 0) {
+        const [counts, reservations] = await Promise.all([
+          Promise.all(
             fetched.map((c) => getReservationCount(c.id).then((n) => ({ id: c.id, count: n })))
-          );
-          const map: Record<string, number> = {};
-          counts.forEach(({ id, count }) => { map[id] = count; });
-          setReservationCounts(map);
-        } else {
-          setReservationCounts({});
-        }
-      } finally {
-        setLoading(false);
-      }
-    };
+          ),
+          appUser
+            ? Promise.all(
+                fetched.map((c) =>
+                  getUserReservationForClass(c.id, appUser.id).then((r) => ({
+                    classId: c.id,
+                    reservationId: r?.id ?? null,
+                  }))
+                )
+              )
+            : [],
+        ]);
 
-    load();
-  }, [selectedDate]);
+        const countMap: Record<string, number> = {};
+        counts.forEach(({ id, count }) => { countMap[id] = count; });
+        setReservationCounts(countMap);
+
+        const resMap: Record<string, string> = {};
+        (reservations as { classId: string; reservationId: string | null }[]).forEach(
+          ({ classId, reservationId }) => {
+            if (reservationId) resMap[classId] = reservationId;
+          }
+        );
+        setUserReservations(resMap);
+      } else {
+        setReservationCounts({});
+        setUserReservations({});
+      }
+    } finally {
+      if (isRefresh) setRefreshing(false);
+      else setLoading(false);
+    }
+  }, [selectedDate, appUser]);
+
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load])
+  );
+
+  const handleReserve = async (classId: string, capacity: number) => {
+    if (!appUser) return;
+    const count = reservationCounts[classId] ?? 0;
+    if (count >= capacity) {
+      Alert.alert('Aula lotada', 'Não há mais vagas disponíveis.');
+      return;
+    }
+    setReservingClassId(classId);
+    try {
+      const reservationId = await createReservation(classId, appUser.id);
+      setUserReservations((prev) => ({ ...prev, [classId]: reservationId }));
+      setReservationCounts((prev) => ({ ...prev, [classId]: (prev[classId] ?? 0) + 1 }));
+    } catch {
+      Alert.alert('Erro', 'Não foi possível realizar a reserva.');
+    } finally {
+      setReservingClassId(null);
+    }
+  };
+
+  const handleCancelReservation = async (classId: string) => {
+    const reservationId = userReservations[classId];
+    if (!reservationId) return;
+    setReservingClassId(classId);
+    try {
+      await cancelReservation(reservationId);
+      setUserReservations((prev) => {
+        const next = { ...prev };
+        delete next[classId];
+        return next;
+      });
+      setReservationCounts((prev) => ({
+        ...prev,
+        [classId]: Math.max(0, (prev[classId] ?? 1) - 1),
+      }));
+    } catch {
+      Alert.alert('Erro', 'Não foi possível cancelar a reserva.');
+    } finally {
+      setReservingClassId(null);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -110,7 +190,17 @@ const ScheduleScreen: React.FC = () => {
       {loading ? (
         <ActivityIndicator color={Colors.primary} style={{ marginTop: 32 }} />
       ) : (
-        <ScrollView contentContainerStyle={styles.classesContainer}>
+        <ScrollView
+          contentContainerStyle={styles.classesContainer}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => load(true)}
+              tintColor={Colors.primary}
+              colors={[Colors.primary]}
+            />
+          }
+        >
           {classes.length === 0 ? (
             <Text style={styles.emptyText}>Nenhuma aula cadastrada para este dia.</Text>
           ) : (
@@ -129,6 +219,10 @@ const ScheduleScreen: React.FC = () => {
                     opacity: 1,
                   }}
                   onPress={() => router.push({ pathname: '/class-detail', params: { id: c.id } })}
+                  myReservationId={userReservations[c.id]}
+                  onReserve={() => handleReserve(c.id, c.capacity)}
+                  onCancelReservation={() => handleCancelReservation(c.id)}
+                  reserving={reservingClassId === c.id}
                 />
               );
             })

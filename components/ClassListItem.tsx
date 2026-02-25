@@ -1,7 +1,7 @@
 
 import { MaterialIcons } from '@expo/vector-icons';
 import React from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Colors, Fonts } from '../theme';
 import Icon from './Icon';
 
@@ -16,9 +16,51 @@ interface ClassListItemProps {
     opacity: number;
   };
   onPress?: () => void;
+  myReservationId?: string;
+  onReserve?: () => void;
+  onCancelReservation?: () => void;
+  reserving?: boolean;
 }
 
-const ClassListItem: React.FC<ClassListItemProps> = ({ item, onPress }) => {
+const ClassListItem: React.FC<ClassListItemProps> = ({
+  item,
+  onPress,
+  myReservationId,
+  onReserve,
+  onCancelReservation,
+  reserving = false,
+}) => {
+  const hasReservation = !!myReservationId;
+
+  const renderRightAction = () => {
+    if (reserving) {
+      return <ActivityIndicator size="small" color={Colors.primary} style={styles.actionLoader} />;
+    }
+    if (hasReservation) {
+      return (
+        <TouchableOpacity
+          style={styles.cancelButton}
+          onPress={onCancelReservation}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Text style={styles.cancelButtonText}>Cancelar</Text>
+        </TouchableOpacity>
+      );
+    }
+    if (item.isFull) {
+      return <Icon name="group" size={24} color={Colors.primary} />;
+    }
+    return (
+      <TouchableOpacity
+        style={styles.reserveButton}
+        onPress={onReserve}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+      >
+        <Text style={styles.reserveButtonText}>Reservar</Text>
+      </TouchableOpacity>
+    );
+  };
+
   return (
     <TouchableOpacity style={[styles.classCard, { opacity: item.opacity }]} onPress={onPress}>
       <View style={styles.classInfo}>
@@ -34,20 +76,48 @@ const ClassListItem: React.FC<ClassListItemProps> = ({ item, onPress }) => {
           </View>
         </View>
       </View>
-      {item.isFull ? <Icon name="group" size={24} color={Colors.primary} /> : <Icon name="chevron-right" size={24} color={Colors.slate[500]} />}
+      {renderRightAction()}
     </TouchableOpacity>
   );
 };
 
 const styles = StyleSheet.create({
   classCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: Colors.backgroundDark, padding: 16, borderRadius: 16, marginBottom: 12, borderWidth: 1, borderColor: Colors.border },
-  classInfo: { flexDirection: 'row', alignItems: 'center' },
+  classInfo: { flexDirection: 'row', alignItems: 'center', flex: 1 },
   classIconContainer: { width: 48, height: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 1, marginRight: 16 },
   classTime: { color: Colors.white, fontFamily: Fonts.sansBold, fontSize: 14, textTransform: 'uppercase', letterSpacing: -0.5 },
   classDetails: { flexDirection: 'row', alignItems: 'center', marginTop: 4 },
   coachName: { fontSize: 11, color: Colors.slate[400] },
   dot: { width: 4, height: 4, borderRadius: 2, backgroundColor: Colors.slate[600], marginHorizontal: 8 },
   spots: { fontSize: 11, fontFamily: Fonts.sansBold },
+  reserveButton: {
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 10,
+  },
+  reserveButtonText: {
+    color: Colors.backgroundDark,
+    fontFamily: Fonts.sansBold,
+    fontSize: 12,
+  },
+  cancelButton: {
+    borderWidth: 1,
+    borderColor: Colors.red[500],
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 10,
+    backgroundColor: 'rgba(239,68,68,0.08)',
+  },
+  cancelButtonText: {
+    color: Colors.red[500],
+    fontFamily: Fonts.sansBold,
+    fontSize: 12,
+  },
+  actionLoader: {
+    width: 60,
+    alignItems: 'center',
+  },
 });
 
 export default ClassListItem;
