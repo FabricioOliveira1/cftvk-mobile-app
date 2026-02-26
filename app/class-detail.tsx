@@ -1,4 +1,5 @@
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { doc, getDoc } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -14,7 +15,6 @@ import {
 } from 'react-native';
 import Icon from '../components/Icon';
 import { useAuth } from '../src/context';
-import { db } from '../src/services/firebase';
 import {
   cancelReservation,
   checkInReservation,
@@ -23,9 +23,9 @@ import {
   getReservationsByClass,
   getUserReservationForClass,
 } from '../src/services';
+import { db } from '../src/services/firebase';
 import { Class, Reservation, Session } from '../src/types';
 import { Colors, Fonts } from '../theme';
-import { doc, getDoc } from 'firebase/firestore';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -322,7 +322,7 @@ const ClassDetailScreen: React.FC = () => {
               {/* Title block */}
               <View style={styles.wodHeader}>
                 <Text style={styles.wodTitle}>WOD do Dia</Text>
-                <Text style={styles.wodDate}>{formatDateFull(classData?.date)}</Text>
+                <Text style={styles.wodDate}>{classData?.time} - {formatDateFull(classData?.date)}</Text>
               </View>
 
               {/* Session cards */}
@@ -437,22 +437,31 @@ const ClassDetailScreen: React.FC = () => {
               </TouchableOpacity>
             )
           ) : (
-            /* Botão de excluir — apenas admins na aba LISTA DE PRESENÇA */
+            /* Botões de admin — apenas na aba LISTA DE PRESENÇA */
             appUser?.role === 'admin' && (
-              <TouchableOpacity
-                style={styles.deleteButton}
-                onPress={handleDeleteClass}
-                disabled={deleting}
-              >
-                {deleting ? (
-                  <ActivityIndicator color={Colors.red[500]} />
-                ) : (
-                  <>
-                    <Icon name="delete-outline" size={20} color={Colors.red[500]} />
-                    <Text style={styles.deleteButtonText}>EXCLUIR AULA</Text>
-                  </>
-                )}
-              </TouchableOpacity>
+              <View style={styles.adminButtonsContainer}>
+                <TouchableOpacity
+                  style={styles.editButton}
+                  onPress={() => router.push({ pathname: '/new-class', params: { id } })}
+                >
+                  <Icon name="edit" size={20} color={Colors.white} />
+                  <Text style={styles.editButtonText}>EDITAR AULA</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.deleteButton}
+                  onPress={handleDeleteClass}
+                  disabled={deleting}
+                >
+                  {deleting ? (
+                    <ActivityIndicator color={Colors.red[500]} />
+                  ) : (
+                    <>
+                      <Icon name="delete-outline" size={20} color={Colors.red[500]} />
+                      <Text style={styles.deleteButtonText}>EXCLUIR AULA</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
             )
           )}
         </View>
@@ -765,6 +774,26 @@ const styles = StyleSheet.create({
   },
   cancelReserveButtonText: {
     color: Colors.red[500],
+    fontFamily: Fonts.sansBold,
+    fontSize: 14,
+    letterSpacing: 0.5,
+  },
+  adminButtonsContainer: {
+    gap: 10,
+  },
+  editButton: {
+    height: 52,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  editButtonText: {
+    color: Colors.white,
     fontFamily: Fonts.sansBold,
     fontSize: 14,
     letterSpacing: 0.5,
