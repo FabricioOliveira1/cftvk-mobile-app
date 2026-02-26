@@ -47,7 +47,7 @@ const EditMemberScreen: React.FC = () => {
   const { id } = useLocalSearchParams<{ id?: string }>();
   const isEditing = !!id;
 
-  const [name, setName] = useState('');
+  const [name, setName] = useState('')
   const [email, setEmail] = useState('');
   const [enrollmentActive, setEnrollmentActive] = useState(true);
   const [plan, setPlan] = useState('Trimestral - VIP');
@@ -73,6 +73,10 @@ const EditMemberScreen: React.FC = () => {
         setName(data.name ?? '');
         setEmail(data.email ?? '');
         setRole(data.role ?? 'student');
+        setPhone(data.phone ?? '');
+        setBirthDate(data.birthDate ?? '');
+        setPlan(data.plan ?? 'Trimestral - VIP');
+        setEnrollmentActive(data.enrollmentActive ?? true);
       }
     }).finally(() => setLoading(false));
   }, [id]);
@@ -86,7 +90,14 @@ const EditMemberScreen: React.FC = () => {
       if (!id) return;
       setSaving(true);
       try {
-        await updateMember(id, { name: name.trim(), role });
+        await updateMember(id, {
+          name: name.trim(),
+          role,
+          phone: phone.trim(),
+          birthDate: birthDate.trim(),
+          plan,
+          enrollmentActive,
+        });
         router.back();
       } catch {
         Alert.alert('Erro', 'Não foi possível salvar as alterações.');
@@ -133,7 +144,7 @@ const EditMemberScreen: React.FC = () => {
             setRemoving(true);
             try {
               await deleteMember(id);
-              router.replace('/(tabs)/members');
+              router.replace('/(admin)/members');
             } catch {
               setRemoving(false);
               Alert.alert('Erro', 'Não foi possível remover o aluno.');

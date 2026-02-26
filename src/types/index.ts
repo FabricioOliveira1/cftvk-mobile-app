@@ -8,6 +8,9 @@ export interface AppUser {
   email: string;
   role: UserRole;
   plan?: string;
+  enrollmentActive?: boolean;
+  phone?: string;
+  birthDate?: string;
   createdAt: Timestamp;
 }
 
