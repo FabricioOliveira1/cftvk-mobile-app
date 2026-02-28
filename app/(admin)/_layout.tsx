@@ -1,8 +1,9 @@
 
-import { Tabs } from 'expo-router';
-import React from 'react';
+import { Tabs, useRouter } from 'expo-router';
+import React, { useEffect } from 'react';
 import { StyleSheet } from 'react-native';
 import Icon from '../../components/Icon';
+import { useAuth } from '../../src/context';
 import { Colors } from '../../theme';
 
 const TabBarIcon = ({ name, color }: { name: React.ComponentProps<typeof Icon>['name'], color: string }) => {
@@ -10,6 +11,15 @@ const TabBarIcon = ({ name, color }: { name: React.ComponentProps<typeof Icon>['
 };
 
 export default function TabLayout() {
+  const { appUser, loading } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!loading && appUser && appUser.role !== 'admin') {
+      router.replace('/(student)/dashboard');
+    }
+  }, [appUser?.role, loading]);
+
   return (
     <Tabs
       screenOptions={{

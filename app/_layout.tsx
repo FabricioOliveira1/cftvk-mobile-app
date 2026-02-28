@@ -18,7 +18,8 @@ function RootLayoutNav() {
       segments[0] === 'member-profile' ||
       segments[0] === 'edit-member' ||
       segments[0] === 'class-detail' ||
-      segments[0] === 'new-class';
+      segments[0] === 'new-class' ||
+      segments[0] === 'prs';
 
     if (!firebaseUser && inProtectedRoute) {
       router.replace('/');
@@ -53,6 +54,7 @@ function RootLayoutNav() {
           gestureEnabled: false,
         }}
       />
+      <Stack.Screen name="prs" />
     </Stack>
   );
 }

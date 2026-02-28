@@ -16,23 +16,25 @@ import {
 import Icon from '../components/Icon';
 import { useAuth } from '../src/context';
 import {
+  callAdminCheckIn,
+  callCheckIn,
   cancelReservation,
-  checkInReservation,
   createReservation,
   deleteClass,
   getReservationsByClass,
+  getUserActiveReservationCount,
   getUserReservationForClass,
 } from '../src/services';
 import { db } from '../src/services/firebase';
-import { Class, Reservation, Session } from '../src/types';
+import { Class, Reservation, ReservationStatus, Session } from '../src/types';
 import { Colors, Fonts } from '../theme';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
-interface AttendeeWithName extends Reservation {
+interface AttendeeWithName extends Omit<Reservation, 'checkedInAt'> {
   displayName: string;
   plan?: string;
-  checkedInAt?: string;
+  checkedInAt?: string; // formatado HH:mm para exibição
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -81,6 +83,12 @@ function getWodBadge(details: string): string | null {
 
 function isWodSession(title: string): boolean {
   return title.toLowerCase().includes('wod');
+}
+
+function isCheckInWindowExpired(cls: Class): boolean {
+  const [y, m, d] = cls.date.split('-').map(Number);
+  const [h, min] = cls.time.split(':').map(Number);
+  return new Date() > new Date(y, m - 1, d, h, min + 15, 0);
 }
 
 // ── Sub-components ─────────────────────────────────────────────────────────────
@@ -163,7 +171,7 @@ const ClassDetailScreen: React.FC = () => {
           const userSnap = await getDoc(doc(db, 'users', r.userId));
           const name = userSnap.exists() ? (userSnap.data().name as string) : 'Usuário';
           const plan = userSnap.exists() ? (userSnap.data().plan as string | undefined) : undefined;
-          const checkedInAt = r.checkedIn ? formatTimestamp(r.createdAt) : undefined;
+          const checkedInAt = r.status === 'CHECKED_IN' ? formatTimestamp(r.checkedInAt ?? r.createdAt) : undefined;
           return { ...r, displayName: name, plan, checkedInAt };
         })
       );
@@ -177,18 +185,39 @@ const ClassDetailScreen: React.FC = () => {
     loadData();
   }, [id]);
 
+  // Check-in pelo admin (sem restrição de tempo)
   const handleCheckIn = async (reservation: AttendeeWithName) => {
     try {
-      await checkInReservation(reservation.id);
+      await callAdminCheckIn(reservation.id);
       setAttendees((prev) =>
         prev.map((a) =>
           a.id === reservation.id
-            ? { ...a, checkedIn: true, checkedInAt: formatTimestamp(new Date()) }
+            ? { ...a, status: 'CHECKED_IN' as ReservationStatus, checkedInAt: formatTimestamp(new Date()) }
             : a
         )
       );
     } catch {
       Alert.alert('Erro', 'Não foi possível registrar o check-in.');
+    }
+  };
+
+  // Check-in pelo próprio aluno (validado server-side: janela até classStart + 15min)
+  const handleStudentCheckIn = async (reservation: AttendeeWithName) => {
+    try {
+      await callCheckIn(reservation.id);
+      setAttendees((prev) =>
+        prev.map((a) =>
+          a.id === reservation.id
+            ? { ...a, status: 'CHECKED_IN' as ReservationStatus, checkedInAt: formatTimestamp(new Date()) }
+            : a
+        )
+      );
+    } catch (e: any) {
+      if (e?.code === 'functions/failed-precondition') {
+        Alert.alert('Tempo esgotado', 'A janela de check-in encerrou 15 minutos após o início da aula.');
+      } else {
+        Alert.alert('Erro', 'Não foi possível registrar o check-in.');
+      }
     }
   };
 
@@ -200,7 +229,12 @@ const ClassDetailScreen: React.FC = () => {
     }
     setReserving(true);
     try {
-      const reservationId = await createReservation(id, appUser.id);
+      const activeCount = await getUserActiveReservationCount(appUser.id);
+      if (activeCount >= 1) {
+        Alert.alert('Limite atingido', 'Você já possui uma aula reservada. Cancele a reserva atual para agendar uma nova.');
+        return;
+      }
+      const reservationId = await createReservation(id, appUser.id, classData.date, classData.time);
       setMyReservationId(reservationId);
     } catch {
       Alert.alert('Erro', 'Não foi possível realizar a reserva.');
@@ -223,28 +257,29 @@ const ClassDetailScreen: React.FC = () => {
   };
 
   const handleDeleteClass = () => {
-    Alert.alert(
-      'Excluir Aula',
-      'Tem certeza que deseja excluir esta aula? Esta ação não pode ser desfeita.',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Excluir',
-          style: 'destructive',
-          onPress: async () => {
-            if (!id) return;
-            setDeleting(true);
-            try {
-              await deleteClass(id);
-              router.back();
-            } catch {
-              Alert.alert('Erro', 'Não foi possível excluir a aula.');
-              setDeleting(false);
-            }
-          },
+    const bookedCount = attendees.filter((a) => a.status === 'BOOKED').length;
+    const warningMsg = bookedCount > 0
+      ? `Esta aula possui ${bookedCount} aluno(s) com reserva ativa. As reservas serão canceladas automaticamente.\n\nEsta ação não pode ser desfeita.`
+      : 'Esta ação não pode ser desfeita.';
+
+    Alert.alert('Excluir Aula', warningMsg, [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Excluir',
+        style: 'destructive',
+        onPress: async () => {
+          if (!id) return;
+          setDeleting(true);
+          try {
+            await deleteClass(id);
+            router.back();
+          } catch {
+            Alert.alert('Erro', 'Não foi possível excluir a aula.');
+            setDeleting(false);
+          }
         },
-      ]
-    );
+      },
+    ]);
   };
 
   const handleCancelReservation = async () => {
@@ -303,7 +338,7 @@ const ClassDetailScreen: React.FC = () => {
           onPress={() => setActiveTab('treino')}
         />
         <TabButton
-          title="LISTA DE PRESENÇA"
+          title={`LISTA DE PRESENÇA (${attendees.length.toString()})`}
           isActive={activeTab === 'presenca'}
           onPress={() => setActiveTab('presenca')}
         />
@@ -357,6 +392,8 @@ const ClassDetailScreen: React.FC = () => {
               )}
               {attendees.map((attendee) => {
                 const isMe = appUser?.id === attendee.userId;
+                const windowExpired = classData ? isCheckInWindowExpired(classData) : false;
+                const isNoShow = attendee.status === 'NO_SHOW' || (windowExpired && attendee.status === 'BOOKED');
                 return (
                   <View
                     key={attendee.id}
@@ -375,7 +412,7 @@ const ClassDetailScreen: React.FC = () => {
                     {/* Middle: name + status */}
                     <View style={styles.attendeeInfo}>
                       <Text style={styles.attendeeName}>{attendee.displayName}</Text>
-                      {attendee.checkedIn ? (
+                      {attendee.status === 'CHECKED_IN' ? (
                         <View style={styles.attendeeStatusRow}>
                           <Icon name="check-circle" size={13} color={Colors.primary} />
                           <Text style={styles.attendeeCheckedInText}>
@@ -383,6 +420,11 @@ const ClassDetailScreen: React.FC = () => {
                               ? `Check-in realizado às ${attendee.checkedInAt ?? '--'}`
                               : 'Check-in realizado'}
                           </Text>
+                        </View>
+                      ) : isNoShow ? (
+                        <View style={styles.attendeeStatusRow}>
+                          <Icon name="cancel" size={13} color={Colors.red[500]} />
+                          <Text style={styles.attendeeNoShowText}>Não compareceu</Text>
                         </View>
                       ) : (
                         <Text style={styles.attendeePlanText}>
@@ -392,20 +434,31 @@ const ClassDetailScreen: React.FC = () => {
                     </View>
 
                     {/* Right: action */}
-                    {attendee.checkedIn ? (
-                      <TouchableOpacity
-                        style={styles.moreButton}
-                        onPress={() => { setSelectedReservation(attendee); setSheetOpen(true); }}
-                      >
-                        <Icon name="more-vert" size={24} color={Colors.slate[400]} />
-                      </TouchableOpacity>
+                    {appUser?.role === 'admin' ? (
+                      attendee.status === 'CHECKED_IN' ? (
+                        <TouchableOpacity
+                          style={styles.moreButton}
+                          onPress={() => { setSelectedReservation(attendee); setSheetOpen(true); }}
+                        >
+                          <Icon name="more-vert" size={24} color={Colors.slate[400]} />
+                        </TouchableOpacity>
+                      ) : (
+                        <TouchableOpacity
+                          style={styles.checkInButton}
+                          onPress={() => handleCheckIn(attendee)}
+                        >
+                          <Text style={styles.checkInButtonText}>Marcar</Text>
+                        </TouchableOpacity>
+                      )
                     ) : (
-                      <TouchableOpacity
-                        style={styles.checkInButton}
-                        onPress={() => handleCheckIn(attendee)}
-                      >
-                        <Text style={styles.checkInButtonText}>Marcar</Text>
-                      </TouchableOpacity>
+                      isMe && attendee.status === 'BOOKED' && !windowExpired ? (
+                        <TouchableOpacity
+                          style={styles.checkInButton}
+                          onPress={() => handleStudentCheckIn(attendee)}
+                        >
+                          <Text style={styles.checkInButtonText}>Check-in</Text>
+                        </TouchableOpacity>
+                      ) : null
                     )}
                   </View>
                 );
@@ -703,6 +756,11 @@ const styles = StyleSheet.create({
   },
   attendeePlanText: {
     color: Colors.textMuted,
+    fontFamily: Fonts.sansMedium,
+    fontSize: 12,
+  },
+  attendeeNoShowText: {
+    color: Colors.red[500],
     fontFamily: Fonts.sansMedium,
     fontSize: 12,
   },
