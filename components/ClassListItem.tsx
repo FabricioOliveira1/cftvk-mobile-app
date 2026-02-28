@@ -31,6 +31,7 @@ interface ClassListItemProps {
   isCheckInWindow?: boolean;
   reserving?: boolean;
   timeStatus?: TimeStatus;
+  historyMode?: boolean;
 }
 
 const ClassListItem: React.FC<ClassListItemProps> = ({
@@ -44,10 +45,28 @@ const ClassListItem: React.FC<ClassListItemProps> = ({
   isCheckInWindow = false,
   reserving = false,
   timeStatus,
+  historyMode = false,
 }) => {
   const hasReservation = !!myReservationId;
 
   const renderRightAction = () => {
+    // Modo histórico: badge read-only, sem ações
+    if (historyMode && hasReservation) {
+      if (reservationStatus === 'CHECKED_IN') {
+        return (
+          <View style={styles.confirmedBadge}>
+            <Icon name="check-circle" size={14} color={Colors.green[500]} />
+            <Text style={styles.confirmedText}>Presente</Text>
+          </View>
+        );
+      }
+      return (
+        <View style={styles.noShowBadge}>
+          <Icon name="cancel" size={14} color={Colors.textMuted} />
+          <Text style={styles.noShowText}>Faltou</Text>
+        </View>
+      );
+    }
     if (reserving) {
       return <ActivityIndicator size="small" color={Colors.primary} style={styles.actionLoader} />;
     }
@@ -226,6 +245,22 @@ const styles = StyleSheet.create({
   },
   confirmedText: {
     color: Colors.green[500],
+    fontFamily: Fonts.sansBold,
+    fontSize: 12,
+  },
+  noShowBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  noShowText: {
+    color: Colors.textMuted,
     fontFamily: Fonts.sansBold,
     fontSize: 12,
   },
