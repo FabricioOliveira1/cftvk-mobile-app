@@ -1,5 +1,5 @@
 import { Stack, useFocusEffect, useRouter } from 'expo-router';
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -15,13 +15,15 @@ import ClassListItem from '../../components/ClassListItem';
 import Icon from '../../components/Icon';
 import { useAuth } from '../../src/context';
 import {
+  callCheckIn,
   cancelReservation,
   createReservation,
   getClassesByDate,
   getReservationCount,
+  getUserActiveReservationCount,
   getUserReservationForClass,
 } from '../../src/services';
-import { Class } from '../../src/types';
+import { Class, ReservationStatus } from '../../src/types';
 import { Colors, Fonts } from '../../theme';
 
 interface DayItem {
@@ -48,6 +50,45 @@ function getWeekDays(): DayItem[] {
 
 const todayString = new Date().toISOString().split('T')[0];
 
+// ── Reservation time rules ──────────────────────────────────────────────────────
+
+type TimeStatus =
+  | { type: 'expired' }
+  | { type: 'pending'; opensLabel: string };
+
+function getClassDateTime(date: string, time: string): Date {
+  const [y, m, d] = date.split('-').map(Number);
+  const [h, min] = time.split(':').map(Number);
+  return new Date(y, m - 1, d, h, min, 0);
+}
+
+function formatDateLabel(date: Date): string {
+  const today = new Date();
+  const tomorrow = new Date(today);
+  tomorrow.setDate(today.getDate() + 1);
+  const time = `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+  if (date.toDateString() === today.toDateString()) return `hoje às ${time}`;
+  if (date.toDateString() === tomorrow.toDateString()) return `amanhã às ${time}`;
+  return `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')} às ${time}`;
+}
+
+function computeTimeStatus(cls: Class): TimeStatus | undefined {
+  const now = new Date();
+  const classStart = getClassDateTime(cls.date, cls.time);
+  const opensAt = new Date(classStart.getTime() - 12 * 60 * 60 * 1000);
+  const deadline = new Date(classStart.getTime() - 15 * 60 * 1000);
+  if (now < opensAt) return { type: 'pending', opensLabel: `Abre ${formatDateLabel(opensAt)}` };
+  if (now > deadline) return { type: 'expired' };
+  return undefined;
+}
+
+function isInCheckInWindow(date: string, time: string): boolean {
+  const classStart = getClassDateTime(date, time);
+  const windowEnd = new Date(classStart.getTime() + 15 * 60 * 1000);
+  const now = new Date();
+  return now >= classStart && now <= windowEnd;
+}
+
 const StudentScheduleScreen: React.FC = () => {
   const router = useRouter();
   const { appUser } = useAuth();
@@ -57,9 +98,16 @@ const StudentScheduleScreen: React.FC = () => {
   const [classes, setClasses] = useState<Class[]>([]);
   const [reservationCounts, setReservationCounts] = useState<Record<string, number>>({});
   const [userReservations, setUserReservations] = useState<Record<string, string>>({});
+  const [reservationStatuses, setReservationStatuses] = useState<Record<string, ReservationStatus>>({});
   const [reservingClassId, setReservingClassId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [, setTick] = useState(0);
+
+  useEffect(() => {
+    const id = setInterval(() => setTick((t) => t + 1), 30_000);
+    return () => clearInterval(id);
+  }, []);
 
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
@@ -79,6 +127,7 @@ const StudentScheduleScreen: React.FC = () => {
                   getUserReservationForClass(c.id, appUser.id).then((r) => ({
                     classId: c.id,
                     reservationId: r?.id ?? null,
+                    status: r?.status ?? null,
                   }))
                 )
               )
@@ -90,15 +139,19 @@ const StudentScheduleScreen: React.FC = () => {
         setReservationCounts(countMap);
 
         const resMap: Record<string, string> = {};
-        (reservations as { classId: string; reservationId: string | null }[]).forEach(
-          ({ classId, reservationId }) => {
+        const statusMap: Record<string, ReservationStatus> = {};
+        (reservations as { classId: string; reservationId: string | null; status: ReservationStatus | null }[]).forEach(
+          ({ classId, reservationId, status }) => {
             if (reservationId) resMap[classId] = reservationId;
+            if (status) statusMap[classId] = status;
           }
         );
         setUserReservations(resMap);
+        setReservationStatuses(statusMap);
       } else {
         setReservationCounts({});
         setUserReservations({});
+        setReservationStatuses({});
       }
     } finally {
       if (isRefresh) setRefreshing(false);
@@ -108,20 +161,43 @@ const StudentScheduleScreen: React.FC = () => {
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
-  const handleReserve = async (classId: string, capacity: number) => {
+  const handleReserve = async (cls: Class) => {
     if (!appUser) return;
-    const count = reservationCounts[classId] ?? 0;
-    if (count >= capacity) {
+
+    const count = reservationCounts[cls.id] ?? 0;
+    if (count >= cls.capacity) {
       Alert.alert('Aula lotada', 'Não há mais vagas disponíveis.');
       return;
     }
-    setReservingClassId(classId);
+
+    // Regra: apenas 1 reserva ativa por vez
+    setReservingClassId(cls.id);
     try {
-      const reservationId = await createReservation(classId, appUser.id);
-      setUserReservations((prev) => ({ ...prev, [classId]: reservationId }));
-      setReservationCounts((prev) => ({ ...prev, [classId]: (prev[classId] ?? 0) + 1 }));
+      const activeCount = await getUserActiveReservationCount(appUser.id);
+      if (activeCount >= 1) {
+        Alert.alert('Limite atingido', 'Você já possui uma aula reservada. Cancele a reserva atual para agendar uma nova.');
+        return;
+      }
+
+      const reservationId = await createReservation(cls.id, appUser.id, cls.date, cls.time);
+      setUserReservations((prev) => ({ ...prev, [cls.id]: reservationId }));
+      setReservationCounts((prev) => ({ ...prev, [cls.id]: (prev[cls.id] ?? 0) + 1 }));
     } catch {
       Alert.alert('Erro', 'Não foi possível realizar a reserva.');
+    } finally {
+      setReservingClassId(null);
+    }
+  };
+
+  const handleCheckIn = async (classId: string) => {
+    const reservationId = userReservations[classId];
+    if (!reservationId) return;
+    setReservingClassId(classId);
+    try {
+      await callCheckIn(reservationId);
+      setReservationStatuses((prev) => ({ ...prev, [classId]: 'CHECKED_IN' }));
+    } catch {
+      Alert.alert('Erro', 'Não foi possível realizar o check-in.');
     } finally {
       setReservingClassId(null);
     }
@@ -201,6 +277,7 @@ const StudentScheduleScreen: React.FC = () => {
           ) : (
             classes.map((c) => {
               const count = reservationCounts[c.id] ?? 0;
+              const timeStatus = computeTimeStatus(c);
               return (
                 <ClassListItem
                   key={c.id}
@@ -215,9 +292,13 @@ const StudentScheduleScreen: React.FC = () => {
                   }}
                   onPress={() => router.push({ pathname: '/class-detail', params: { id: c.id } })}
                   myReservationId={userReservations[c.id]}
-                  onReserve={() => handleReserve(c.id, c.capacity)}
+                  onReserve={() => handleReserve(c)}
                   onCancelReservation={() => handleCancelReservation(c.id)}
+                  onCheckIn={() => handleCheckIn(c.id)}
+                  reservationStatus={reservationStatuses[c.id]}
+                  isCheckInWindow={isInCheckInWindow(c.date, c.time)}
                   reserving={reservingClassId === c.id}
+                  timeStatus={timeStatus}
                 />
               );
             })

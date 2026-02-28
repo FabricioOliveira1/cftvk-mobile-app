@@ -24,6 +24,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (fbUser) {
         try {
+          // Force token refresh para garantir que custom claims (role) estejam atualizados.
+          // Erro aqui não deve bloquear o login — apenas loga e segue.
+          await fbUser.getIdToken(true).catch(() => {});
           const userSnap = await getDoc(doc(db, 'users', fbUser.uid));
           if (userSnap.exists()) {
             setAppUser({ id: userSnap.id, ...userSnap.data() } as AppUser);

@@ -13,14 +13,14 @@ import {
 import Icon from '../../components/Icon';
 import { useAuth } from '../../src/context';
 import { db } from '../../src/services/firebase';
-import { Class } from '../../src/types';
+import { Class, ReservationStatus } from '../../src/types';
 import { Colors, Fonts } from '../../theme';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
 interface HistoryItem {
   reservationId: string;
-  checkedIn: boolean;
+  status: ReservationStatus;
   cls: Class;
 }
 
@@ -74,7 +74,8 @@ const StudentHistoryScreen: React.FC = () => {
               if (cls.date < today) {
                 items.push({
                   reservationId: resDoc.id,
-                  checkedIn: resData.checkedIn ?? false,
+                  // backward compat: tolera docs antigos sem status
+                  status: (resData.status ?? (resData.checkedIn ? 'CHECKED_IN' : 'BOOKED')) as ReservationStatus,
                   cls,
                 });
               }
@@ -139,14 +140,14 @@ const StudentHistoryScreen: React.FC = () => {
                   </Text>
                 </View>
 
-                <View style={[styles.statusBadge, item.checkedIn ? styles.statusCheckedIn : styles.statusAbsent]}>
+                <View style={[styles.statusBadge, item.status === 'CHECKED_IN' ? styles.statusCheckedIn : styles.statusAbsent]}>
                   <Icon
-                    name={item.checkedIn ? 'check-circle' : 'cancel'}
+                    name={item.status === 'CHECKED_IN' ? 'check-circle' : 'cancel'}
                     size={14}
-                    color={item.checkedIn ? Colors.green[500] : Colors.textMuted}
+                    color={item.status === 'CHECKED_IN' ? Colors.green[500] : Colors.textMuted}
                   />
-                  <Text style={[styles.statusText, { color: item.checkedIn ? Colors.green[500] : Colors.textMuted }]}>
-                    {item.checkedIn ? 'Presente' : 'Faltou'}
+                  <Text style={[styles.statusText, { color: item.status === 'CHECKED_IN' ? Colors.green[500] : Colors.textMuted }]}>
+                    {item.status === 'CHECKED_IN' ? 'Presente' : 'Faltou'}
                   </Text>
                 </View>
               </TouchableOpacity>
