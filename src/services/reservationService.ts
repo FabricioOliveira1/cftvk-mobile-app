@@ -1,11 +1,16 @@
 import {
+  DocumentSnapshot,
+  QueryDocumentSnapshot,
   addDoc,
   collection,
   deleteDoc,
   doc,
   getDocs,
+  limit,
+  orderBy,
   query,
   serverTimestamp,
+  startAfter,
   where,
 } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
@@ -96,6 +101,38 @@ export async function getUserActiveReservationCount(userId: string): Promise<num
     }
     return false; // aula já passou
   }).length;
+}
+
+/**
+ * Busca uma página do histórico de reservas do usuário (aulas já encerradas).
+ * Ordenado por classDate DESC. Usar `lastDoc` para paginar.
+ * Filtragem de aulas do dia atual (classDate == hoje) deve ser feita pelo cliente
+ * usando isPastClass() pois Firestore não suporta filtro em dois campos ao mesmo tempo sem índice extra.
+ */
+export async function getHistoryPage(
+  userId: string,
+  pageSize: number,
+  lastDoc?: DocumentSnapshot
+): Promise<{ docs: QueryDocumentSnapshot[]; lastDoc: DocumentSnapshot | null }> {
+  const today = new Date().toISOString().split('T')[0];
+
+  const baseConstraints = [
+    where('userId', '==', userId),
+    where('classDate', '<=', today),
+    orderBy('classDate', 'desc'),
+    limit(pageSize),
+  ];
+
+  const q = lastDoc
+    ? query(collection(db, 'reservations'), ...baseConstraints, startAfter(lastDoc))
+    : query(collection(db, 'reservations'), ...baseConstraints);
+
+  const snap = await getDocs(q);
+
+  return {
+    docs: snap.docs,
+    lastDoc: snap.docs.length === pageSize ? snap.docs[snap.docs.length - 1] : null,
+  };
 }
 
 export async function getUserReservationForClass(

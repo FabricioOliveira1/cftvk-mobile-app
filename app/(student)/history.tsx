@@ -1,25 +1,32 @@
 import { Stack, useFocusEffect, useRouter } from 'expo-router';
-import { collection, doc, getDoc, getDocs, orderBy, query, where } from 'firebase/firestore';
+import { DocumentSnapshot, QueryDocumentSnapshot, doc, getDoc } from 'firebase/firestore';
 import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
+  FlatList,
   SafeAreaView,
-  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import ClassListItem from '../../components/ClassListItem';
 import Icon from '../../components/Icon';
 import { useAuth } from '../../src/context';
 import { db } from '../../src/services/firebase';
+import { getHistoryPage } from '../../src/services';
 import { Class, ReservationStatus } from '../../src/types';
 import { Colors, Fonts } from '../../theme';
+
+// ── Constants ──────────────────────────────────────────────────────────────────
+
+const PAGE_SIZE = 10;
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
 interface HistoryItem {
   reservationId: string;
+  reservationDoc: QueryDocumentSnapshot;
   status: ReservationStatus;
   cls: Class;
 }
@@ -36,63 +43,125 @@ function formatDateLabel(dateStr?: string): string {
   return `${DAY_NAMES[date.getDay()]}, ${d} de ${MONTH_NAMES[m - 1]}`;
 }
 
+/**
+ * Retorna true se a aula já terminou (duração 1h).
+ * Aulas de dias anteriores: sempre true.
+ * Aulas de hoje: apenas se classTime + 60min < agora.
+ */
+function isPastClass(classDate?: string, classTime?: string): boolean {
+  if (!classDate || !classTime) return true; // conservador: inclui se dados ausentes
+  const today = new Date().toISOString().split('T')[0];
+  if (classDate < today) return true;
+  if (classDate > today) return false;
+  // classDate === hoje: checar se aula terminou
+  const [h, min] = classTime.split(':').map(Number);
+  const classEnd = new Date();
+  classEnd.setHours(h, min + 60, 0, 0);
+  return new Date() > classEnd;
+}
+
+// ── Empty state ────────────────────────────────────────────────────────────────
+
+const EmptyView: React.FC = () => (
+  <View style={styles.emptyContainer}>
+    <Icon name="fitness-center" size={48} color={Colors.textMuted} />
+    <Text style={styles.emptyTitle}>Nenhum treino ainda</Text>
+    <Text style={styles.emptySubtitle}>Suas aulas realizadas aparecerão aqui.</Text>
+  </View>
+);
+
 // ── Screen ─────────────────────────────────────────────────────────────────────
 
 const StudentHistoryScreen: React.FC = () => {
   const router = useRouter();
   const { appUser } = useAuth();
+
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [lastDoc, setLastDoc] = useState<DocumentSnapshot | null | undefined>(undefined);
+  const [hasMore, setHasMore] = useState(true);
+
+  const loadPage = useCallback(
+    async (cursor: DocumentSnapshot | undefined, replace: boolean) => {
+      if (!appUser) return;
+      if (replace) setLoading(true);
+      else setLoadingMore(true);
+
+      try {
+        const { docs, lastDoc: nextCursor } = await getHistoryPage(appUser.id, PAGE_SIZE, cursor);
+
+        // Filtra client-side: descarta reservas de hoje cuja aula ainda não terminou
+        const pastDocs = docs.filter((resDoc: QueryDocumentSnapshot) => {
+          const { classDate, classTime } = resDoc.data();
+          return isPastClass(classDate, classTime);
+        });
+
+        // Busca class docs em paralelo — bounded por PAGE_SIZE (≤10 reads)
+        const items = (
+          await Promise.all(
+            pastDocs.map(async (resDoc: QueryDocumentSnapshot) => {
+              const data = resDoc.data();
+              const classSnap = await getDoc(doc(db, 'classes', data.classId));
+              if (!classSnap.exists()) return null;
+              return {
+                reservationId: resDoc.id,
+                reservationDoc: resDoc,
+                status: (data.status ?? 'NO_SHOW') as ReservationStatus,
+                cls: { id: classSnap.id, ...classSnap.data() } as Class,
+              };
+            })
+          )
+        ).filter(Boolean) as HistoryItem[];
+
+        setHistory((prev) => (replace ? items : [...prev, ...items]));
+        setLastDoc(nextCursor);
+        setHasMore(nextCursor !== null);
+      } finally {
+        if (replace) setLoading(false);
+        else setLoadingMore(false);
+      }
+    },
+    [appUser]
+  );
 
   useFocusEffect(
     useCallback(() => {
-      if (!appUser) return;
-      setLoading(true);
-
-      const today = new Date().toISOString().split('T')[0];
-
-      const loadHistory = async () => {
-        try {
-          // Busca todas as reservas do usuário
-          const q = query(
-            collection(db, 'reservations'),
-            where('userId', '==', appUser.id)
-          );
-          const snap = await getDocs(q);
-
-          const items: HistoryItem[] = [];
-
-          await Promise.all(
-            snap.docs.map(async (resDoc) => {
-              const resData = resDoc.data();
-              const classSnap = await getDoc(doc(db, 'classes', resData.classId));
-              if (!classSnap.exists()) return;
-
-              const cls = { id: classSnap.id, ...classSnap.data() } as Class;
-
-              // Apenas aulas passadas (data < hoje)
-              if (cls.date < today) {
-                items.push({
-                  reservationId: resDoc.id,
-                  // backward compat: tolera docs antigos sem status
-                  status: (resData.status ?? (resData.checkedIn ? 'CHECKED_IN' : 'BOOKED')) as ReservationStatus,
-                  cls,
-                });
-              }
-            })
-          );
-
-          // Ordena do mais recente para o mais antigo
-          items.sort((a, b) => b.cls.date.localeCompare(a.cls.date));
-          setHistory(items);
-        } finally {
-          setLoading(false);
-        }
-      };
-
-      loadHistory();
-    }, [appUser?.id])
+      setHistory([]);
+      setLastDoc(undefined);
+      setHasMore(true);
+      loadPage(undefined, true);
+    }, [loadPage])
   );
+
+  const handleLoadMore = () => {
+    if (!loadingMore && hasMore && lastDoc) {
+      loadPage(lastDoc, false);
+    }
+  };
+
+  const renderItem = ({ item }: { item: HistoryItem }) => (
+    <ClassListItem
+      item={{
+        time: `${item.cls.title} · ${item.cls.time}`,
+        coach: item.cls.coach,
+        spots: formatDateLabel(item.cls.date),
+        icon: 'fitness-center',
+        color: Colors.primary,
+        isFull: false,
+        opacity: 1,
+      }}
+      onPress={() => router.push({ pathname: '/class-detail', params: { id: item.cls.id } })}
+      myReservationId={item.reservationId}
+      reservationStatus={item.status}
+      historyMode
+    />
+  );
+
+  const renderFooter = () =>
+    loadingMore ? (
+      <ActivityIndicator color={Colors.primary} style={{ marginVertical: 16 }} />
+    ) : null;
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -115,45 +184,16 @@ const StudentHistoryScreen: React.FC = () => {
       {loading ? (
         <ActivityIndicator color={Colors.primary} style={{ marginTop: 48 }} />
       ) : (
-        <ScrollView contentContainerStyle={styles.container}>
-          {history.length === 0 ? (
-            <View style={styles.emptyContainer}>
-              <Icon name="fitness-center" size={48} color={Colors.textMuted} />
-              <Text style={styles.emptyTitle}>Nenhum treino ainda</Text>
-              <Text style={styles.emptySubtitle}>Suas aulas realizadas aparecerão aqui.</Text>
-            </View>
-          ) : (
-            history.map((item) => (
-              <TouchableOpacity
-                key={item.reservationId}
-                style={styles.card}
-                onPress={() => router.push({ pathname: '/class-detail', params: { id: item.cls.id } })}
-              >
-                <View style={styles.cardIconContainer}>
-                  <Icon name="fitness-center" size={22} color={Colors.primary} />
-                </View>
-
-                <View style={styles.cardInfo}>
-                  <Text style={styles.cardTitle}>{item.cls.title}</Text>
-                  <Text style={styles.cardSub}>
-                    {formatDateLabel(item.cls.date)} · {item.cls.time} · Coach {item.cls.coach}
-                  </Text>
-                </View>
-
-                <View style={[styles.statusBadge, item.status === 'CHECKED_IN' ? styles.statusCheckedIn : styles.statusAbsent]}>
-                  <Icon
-                    name={item.status === 'CHECKED_IN' ? 'check-circle' : 'cancel'}
-                    size={14}
-                    color={item.status === 'CHECKED_IN' ? Colors.green[500] : Colors.textMuted}
-                  />
-                  <Text style={[styles.statusText, { color: item.status === 'CHECKED_IN' ? Colors.green[500] : Colors.textMuted }]}>
-                    {item.status === 'CHECKED_IN' ? 'Presente' : 'Faltou'}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            ))
-          )}
-        </ScrollView>
+        <FlatList
+          data={history}
+          keyExtractor={(item) => item.reservationId}
+          renderItem={renderItem}
+          contentContainerStyle={styles.container}
+          onEndReached={handleLoadMore}
+          onEndReachedThreshold={0.3}
+          ListFooterComponent={renderFooter}
+          ListEmptyComponent={<EmptyView />}
+        />
       )}
     </SafeAreaView>
   );
@@ -181,58 +221,6 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.sansMedium,
     fontSize: 14,
     textAlign: 'center',
-  },
-
-  card: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.cardDark,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    padding: 14,
-    marginBottom: 10,
-    gap: 12,
-  },
-  cardIconContainer: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: 'rgba(232,184,67,0.1)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  cardInfo: {
-    flex: 1,
-  },
-  cardTitle: {
-    color: Colors.white,
-    fontFamily: Fonts.sansBold,
-    fontSize: 14,
-    marginBottom: 3,
-  },
-  cardSub: {
-    color: Colors.textMuted,
-    fontFamily: Fonts.sansMedium,
-    fontSize: 12,
-  },
-  statusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 99,
-  },
-  statusCheckedIn: {
-    backgroundColor: 'rgba(34,197,94,0.1)',
-  },
-  statusAbsent: {
-    backgroundColor: 'rgba(255,255,255,0.05)',
-  },
-  statusText: {
-    fontFamily: Fonts.sansBold,
-    fontSize: 11,
   },
 });
 
