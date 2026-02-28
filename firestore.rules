@@ -1,0 +1,50 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Usuários
+    match /users/{userId} {
+      allow read: if request.auth != null;
+      // Criação: apenas Cloud Functions via admin SDK (allow create: if false)
+      allow create: if false;
+      // Atualização: apenas o próprio usuário, sem poder alterar role
+      allow update: if request.auth != null
+        && request.auth.uid == userId
+        && request.resource.data.role == resource.data.role;
+      allow delete: if false;
+    }
+
+    // Reservas
+    match /reservations/{reservationId} {
+      allow read: if request.auth != null;
+
+      // Criar reserva: apenas o próprio usuário, status deve ser BOOKED
+      allow create: if request.auth != null
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.status == 'BOOKED';
+
+      // Cancelar: apenas o próprio usuário pode deletar sua reserva
+      allow delete: if request.auth != null
+        && resource.data.userId == request.auth.uid;
+
+      // Atualizar status: somente Cloud Functions via admin SDK
+      allow update: if false;
+    }
+
+    // Aulas
+    match /classes/{classId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // PRs (Personal Records)
+    match /prs/{prId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null
+        && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if request.auth != null
+        && resource.data.userId == request.auth.uid;
+    }
+  }
+}

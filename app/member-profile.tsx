@@ -102,6 +102,30 @@ const MemberProfileScreen: React.FC = () => {
                   <Text style={styles.cardValue}>{member.email}</Text>
                 </View>
               </View>
+              <View style={styles.cardDivider} />
+              <View style={styles.cardRow}>
+                <Icon name="phone" size={20} color={Colors.slate[500]} />
+                <View style={styles.cardTextContainer}>
+                  <Text style={styles.cardLabel}>Telefone</Text>
+                  <Text style={styles.cardValue}>{member.phone || '—'}</Text>
+                </View>
+              </View>
+              <View style={styles.cardDivider} />
+              <View style={styles.cardRow}>
+                <Icon name="cake" size={20} color={Colors.slate[500]} />
+                <View style={styles.cardTextContainer}>
+                  <Text style={styles.cardLabel}>Data de Nascimento</Text>
+                  <Text style={styles.cardValue}>{member.birthDate || '—'}</Text>
+                </View>
+              </View>
+              <View style={styles.cardDivider} />
+              <View style={styles.cardRow}>
+                <Icon name="verified-user" size={20} color={Colors.slate[500]} />
+                <View style={styles.cardTextContainer}>
+                  <Text style={styles.cardLabel}>Tipo de Usuário</Text>
+                  <Text style={[styles.cardValue, { color: tagColor }]}>{roleLabel(member.role)}</Text>
+                </View>
+              </View>
             </View>
           </View>
 
@@ -142,6 +166,7 @@ const styles = StyleSheet.create({
   cardLabel: { fontSize: 10, color: Colors.slate[500], marginBottom: 2 },
   cardValue: { fontSize: 14, fontFamily: Fonts.sansMedium, color: Colors.white },
   statusDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: Colors.green[500], marginRight: 12 },
+  cardDivider: { height: 1, backgroundColor: Colors.border, marginHorizontal: 16 },
 });
 
 export default MemberProfileScreen;

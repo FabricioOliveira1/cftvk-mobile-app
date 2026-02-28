@@ -5,7 +5,7 @@ import { Colors } from '../theme';
 import LoadingScreen from '../components/LoadingScreen';
 
 function RootLayoutNav() {
-  const { firebaseUser, loading } = useAuth();
+  const { firebaseUser, appUser, loading } = useAuth();
   const segments = useSegments();
   const router = useRouter();
 
@@ -13,18 +13,24 @@ function RootLayoutNav() {
     if (loading) return;
 
     const inProtectedRoute =
-      segments[0] === '(tabs)' ||
+      segments[0] === '(admin)' ||
+      segments[0] === '(student)' ||
       segments[0] === 'member-profile' ||
       segments[0] === 'edit-member' ||
       segments[0] === 'class-detail' ||
-      segments[0] === 'new-class';
+      segments[0] === 'new-class' ||
+      segments[0] === 'prs';
 
     if (!firebaseUser && inProtectedRoute) {
       router.replace('/');
-    } else if (firebaseUser && segments[0] === undefined) {
-      router.replace('/(tabs)/dashboard');
+    } else if (firebaseUser && appUser && segments[0] === undefined) {
+      if (appUser.role === 'admin') {
+        router.replace('/(admin)/dashboard');
+      } else {
+        router.replace('/(student)/dashboard');
+      }
     }
-  }, [firebaseUser, loading, segments]);
+  }, [firebaseUser, appUser, loading, segments]);
 
   if (loading) return <LoadingScreen />;
 
@@ -36,7 +42,8 @@ function RootLayoutNav() {
       }}
     >
       <Stack.Screen name="index" />
-      <Stack.Screen name="(tabs)" />
+      <Stack.Screen name="(admin)" />
+      <Stack.Screen name="(student)" />
       <Stack.Screen name="member-profile" />
       <Stack.Screen name="edit-member" />
       <Stack.Screen name="class-detail" />
@@ -47,6 +54,7 @@ function RootLayoutNav() {
           gestureEnabled: false,
         }}
       />
+      <Stack.Screen name="prs" />
     </Stack>
   );
 }
