@@ -8,6 +8,9 @@ export interface AppUser {
   email: string;
   role: UserRole;
   plan?: string;
+  enrollmentActive?: boolean;
+  phone?: string;
+  birthDate?: string;
   createdAt: Timestamp;
 }
 
@@ -28,12 +31,28 @@ export interface Class {
   sessions?: Session[];
 }
 
+export type ReservationStatus = 'BOOKED' | 'CHECKED_IN' | 'NO_SHOW';
+
 export interface Reservation {
   id: string;
   userId: string;
   classId: string;
-  checkedIn: boolean;
+  status: ReservationStatus;
+  classDate?: string; // YYYY-MM-DD — denormalizado para checar se a aula já passou
+  classTime?: string; // HH:mm    — denormalizado para checar se a aula já passou
   createdAt: Timestamp;
+  checkedInAt?: Timestamp; // quando o check-in foi realizado (preenchido pela CF)
 }
 
 export type NewClassPayload = Omit<Class, 'id' | 'createdBy'>;
+
+export type PRUnit = 'kg' | 'reps' | 'min';
+
+export interface PR {
+  id: string;
+  userId: string;
+  movement: string;
+  value: string;
+  unit: PRUnit;
+  createdAt: Timestamp;
+}

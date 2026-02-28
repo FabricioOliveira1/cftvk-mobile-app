@@ -1,15 +1,14 @@
-
 import { Tabs } from 'expo-router';
 import React from 'react';
 import { StyleSheet } from 'react-native';
 import Icon from '../../components/Icon';
 import { Colors } from '../../theme';
 
-const TabBarIcon = ({ name, color }: { name: React.ComponentProps<typeof Icon>['name'], color: string }) => {
-  return <Icon name={name} size={24} color={color} />;
-};
+const TabBarIcon = ({ name, color }: { name: React.ComponentProps<typeof Icon>['name']; color: string }) => (
+  <Icon name={name} size={24} color={color} />
+);
 
-export default function TabLayout() {
+export default function StudentTabLayout() {
   return (
     <Tabs
       screenOptions={{
@@ -29,7 +28,7 @@ export default function TabLayout() {
         name="dashboard"
         options={{
           title: 'Início',
-          tabBarIcon: ({ color }) => <TabBarIcon name="dashboard" color={color} />,
+          tabBarIcon: ({ color }) => <TabBarIcon name="home" color={color} />,
         }}
       />
       <Tabs.Screen
@@ -40,17 +39,17 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="members"
+        name="history"
         options={{
-          title: 'Membros',
-          tabBarIcon: ({ color }) => <TabBarIcon name="person-search" color={color} />,
+          title: 'Histórico',
+          tabBarIcon: ({ color }) => <TabBarIcon name="history" color={color} />,
         }}
       />
-       <Tabs.Screen
-        name="settings"
+      <Tabs.Screen
+        name="profile"
         options={{
-          title: 'Ajustes',
-          tabBarIcon: ({ color }) => <TabBarIcon name="settings" color={color} />,
+          title: 'Perfil',
+          tabBarIcon: ({ color }) => <TabBarIcon name="person" color={color} />,
         }}
       />
     </Tabs>
@@ -58,8 +57,8 @@ export default function TabLayout() {
 }
 
 const styles = StyleSheet.create({
-    tabLabel: {
-        fontSize: 10,
-        fontWeight: 'bold',
-    }
+  tabLabel: {
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
 });

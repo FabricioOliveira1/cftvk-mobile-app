@@ -1,15 +1,15 @@
 import {
   addDoc,
   collection,
-  deleteDoc,
-  doc,
   getDocs,
   query,
-  updateDoc,
   where,
 } from 'firebase/firestore';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { db } from './firebase';
 import { Class, NewClassPayload } from '../types';
+
+const functions = getFunctions();
 
 export async function getClassesByDate(date: string): Promise<Class[]> {
   const q = query(collection(db, 'classes'), where('date', '==', date));
@@ -32,11 +32,11 @@ export async function updateClass(
   id: string,
   payload: Partial<NewClassPayload>
 ): Promise<void> {
-  await updateDoc(doc(db, 'classes', id), payload);
+  await httpsCallable(functions, 'updateClass')({ classId: id, payload });
 }
 
 export async function deleteClass(id: string): Promise<void> {
-  await deleteDoc(doc(db, 'classes', id));
+  await httpsCallable(functions, 'deleteClass')({ classId: id });
 }
 
 export async function getMemberCount(): Promise<number> {
