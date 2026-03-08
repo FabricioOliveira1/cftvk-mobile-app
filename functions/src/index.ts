@@ -144,112 +144,6 @@ export const createUser = onCall(async (request) => {
 });
 
 // ---------------------------------------------------------------------------
-// checkIn — aluno: valida janela de 15 min após início da aula (server-side)
-// ---------------------------------------------------------------------------
-
-export const checkIn = onCall(async (request) => {
-  if (!request.auth) throw new HttpsError('unauthenticated', 'Login necessário.');
-
-  const { reservationId } = request.data as { reservationId: string };
-  if (!reservationId) throw new HttpsError('invalid-argument', 'reservationId é obrigatório.');
-
-  const ref = admin.firestore().doc(`reservations/${reservationId}`);
-  const snap = await ref.get();
-  if (!snap.exists) throw new HttpsError('not-found', 'Reserva não encontrada.');
-
-  const data = snap.data()!;
-
-  if (data.userId !== request.auth.uid) {
-    throw new HttpsError('permission-denied', 'Acesso negado.');
-  }
-
-  if (data.status !== 'BOOKED') {
-    throw new HttpsError('failed-precondition', 'Reserva não está no estado BOOKED.');
-  }
-
-  const { classDate, classTime } = data;
-  if (!classDate || !classTime) {
-    throw new HttpsError('failed-precondition', 'Dados de data/hora da aula ausentes na reserva.');
-  }
-
-  const [y, m, d] = (classDate as string).split('-').map(Number);
-  const [h, min] = (classTime as string).split(':').map(Number);
-  const deadline = new Date(y, m - 1, d, h, min + 15, 0);
-
-  if (new Date() > deadline) {
-    throw new HttpsError('failed-precondition', 'check_in_window_expired');
-  }
-
-  await ref.update({
-    status: 'CHECKED_IN',
-    checkedInAt: admin.firestore.FieldValue.serverTimestamp(),
-  });
-});
-
-// ---------------------------------------------------------------------------
-// adminCheckIn — admin: sem restrição de tempo (override manual)
-// ---------------------------------------------------------------------------
-
-export const adminCheckIn = onCall(async (request) => {
-  if (!request.auth) throw new HttpsError('unauthenticated', 'Login necessário.');
-
-  const callerDoc = await admin.firestore().doc(`users/${request.auth.uid}`).get();
-  if (!callerDoc.exists || callerDoc.data()!.role !== 'admin') {
-    throw new HttpsError('permission-denied', 'Apenas administradores podem usar esta função.');
-  }
-
-  const { reservationId } = request.data as { reservationId: string };
-  if (!reservationId) throw new HttpsError('invalid-argument', 'reservationId é obrigatório.');
-
-  const ref = admin.firestore().doc(`reservations/${reservationId}`);
-  const snap = await ref.get();
-  if (!snap.exists) throw new HttpsError('not-found', 'Reserva não encontrada.');
-
-  await ref.update({
-    status: 'CHECKED_IN',
-    checkedInAt: admin.firestore.FieldValue.serverTimestamp(),
-  });
-});
-
-// ---------------------------------------------------------------------------
-// markNoShows — Cloud Scheduler: marca reservas BOOKED expiradas como NO_SHOW
-// ---------------------------------------------------------------------------
-
-export const markNoShows = onSchedule('every 15 minutes', async () => {
-  const now = new Date();
-  const noShowTs = admin.firestore.Timestamp.fromDate(now);
-  const todayStr = now.toISOString().split('T')[0]; // 'YYYY-MM-DD'
-
-  // Filtra apenas reservas passadas (classDate <= hoje) para limitar leituras
-  const snap = await admin.firestore()
-    .collection('reservations')
-    .where('status', '==', 'BOOKED')
-    .where('classDate', '<=', todayStr)
-    .get();
-
-  const batch = admin.firestore().batch();
-  let count = 0;
-
-  for (const docSnap of snap.docs) {
-    const { classDate, classTime } = docSnap.data();
-    if (!classDate || !classTime) continue;
-
-    const [y, m, d] = (classDate as string).split('-').map(Number);
-    const [h, min] = (classTime as string).split(':').map(Number);
-    const deadline = new Date(y, m - 1, d, h, min + 15, 0);
-
-    if (now > deadline) {
-      batch.update(docSnap.ref, { status: 'NO_SHOW', noShowAt: noShowTs });
-      count++;
-    }
-
-    if (count === 500) break; // limite do batch do Firestore
-  }
-
-  if (count > 0) await batch.commit();
-});
-
-// ---------------------------------------------------------------------------
 // syncAllUserClaims — executar UMA vez para sincronizar custom claims nos usuários existentes
 // Após executar, o token JWT de cada usuário conterá { role } sem precisar de leitura do Firestore
 // ---------------------------------------------------------------------------
@@ -273,6 +167,64 @@ export const syncAllUserClaims = onCall(async (request) => {
   }
 
   return { synced };
+});
+
+// ---------------------------------------------------------------------------
+// updateMemberEnrollment — admin: atualiza planType, planExpiresAt e enrollmentActive
+// Campos de matrícula são admin-only — não devem ser alterados via client updateDoc
+// ---------------------------------------------------------------------------
+
+export const updateMemberEnrollment = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Login necessário.');
+
+  const callerDoc = await admin.firestore().doc(`users/${request.auth.uid}`).get();
+  if (!callerDoc.exists || callerDoc.data()!.role !== 'admin') {
+    throw new HttpsError('permission-denied', 'Apenas administradores podem usar esta função.');
+  }
+
+  const { uid, planType, enrollmentActive } = request.data as {
+    uid: string;
+    planType?: string;
+    enrollmentActive: boolean;
+  };
+  if (!uid) throw new HttpsError('invalid-argument', 'uid é obrigatório.');
+
+  const PLAN_DAYS: Record<string, number>   = { mensal: 30, trimestral: 90, semestral: 180 };
+  const PLAN_LABELS: Record<string, string> = { mensal: 'Mensal', trimestral: 'Trimestral', semestral: 'Semestral' };
+
+  const updateData: Record<string, unknown> = { enrollmentActive };
+
+  if (planType && PLAN_DAYS[planType]) {
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + PLAN_DAYS[planType]);
+    updateData.planType     = planType;
+    updateData.plan         = PLAN_LABELS[planType];
+    updateData.planExpiresAt = admin.firestore.Timestamp.fromDate(expiresAt);
+  }
+
+  await admin.firestore().doc(`users/${uid}`).update(updateData);
+});
+
+// ---------------------------------------------------------------------------
+// deactivateExpiredPlans — Cloud Scheduler diário 02:00 UTC
+// Desativa matrícula de alunos cujo planExpiresAt já passou
+// Requer índice composto: users (enrollmentActive ASC, planExpiresAt ASC)
+// ---------------------------------------------------------------------------
+
+export const deactivateExpiredPlans = onSchedule('0 2 * * *', async () => {
+  const now = admin.firestore.Timestamp.now();
+
+  const snap = await admin.firestore()
+    .collection('users')
+    .where('enrollmentActive', '==', true)
+    .where('planExpiresAt', '<=', now)
+    .get();
+
+  if (snap.empty) return;
+
+  const batch = admin.firestore().batch();
+  snap.docs.forEach((d) => batch.update(d.ref, { enrollmentActive: false }));
+  await batch.commit();
 });
 
 // ---------------------------------------------------------------------------

@@ -1,5 +1,5 @@
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { doc, getDoc } from 'firebase/firestore';
+import { Timestamp, doc, getDoc } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -14,6 +14,11 @@ import Icon from '../components/Icon';
 import { db } from '../src/services/firebase';
 import { AppUser, UserRole } from '../src/types';
 import { Colors, Fonts } from '../theme';
+
+function formatExpiry(ts: Timestamp): string {
+  const d = ts.toDate();
+  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+}
 
 const roleLabel = (role: UserRole) => {
   if (role === 'admin') return 'Administrador';
@@ -130,11 +135,36 @@ const MemberProfileScreen: React.FC = () => {
           </View>
 
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Status da Matrícula</Text>
-            <View style={[styles.card, styles.cardRow, { justifyContent: 'space-between' }]}>
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <View style={styles.statusDot} />
-                <Text style={styles.cardValue}>Ativo</Text>
+            <Text style={styles.sectionTitle}>Matrícula</Text>
+            <View style={styles.card}>
+              <View style={styles.cardRow}>
+                <Icon name="card-membership" size={20} color={Colors.slate[500]} />
+                <View style={styles.cardTextContainer}>
+                  <Text style={styles.cardLabel}>Plano</Text>
+                  <Text style={styles.cardValue}>{member.plan || '—'}</Text>
+                </View>
+              </View>
+              {member.planExpiresAt && (
+                <>
+                  <View style={styles.cardDivider} />
+                  <View style={styles.cardRow}>
+                    <Icon name="event" size={20} color={Colors.slate[500]} />
+                    <View style={styles.cardTextContainer}>
+                      <Text style={styles.cardLabel}>Válido até</Text>
+                      <Text style={styles.cardValue}>{formatExpiry(member.planExpiresAt)}</Text>
+                    </View>
+                  </View>
+                </>
+              )}
+              <View style={styles.cardDivider} />
+              <View style={styles.cardRow}>
+                <View style={[styles.statusDot, { backgroundColor: member.enrollmentActive !== false ? Colors.green[500] : Colors.red[500] }]} />
+                <View style={styles.cardTextContainer}>
+                  <Text style={styles.cardLabel}>Status</Text>
+                  <Text style={styles.cardValue}>
+                    {member.enrollmentActive !== false ? 'Ativo' : 'Inativo'}
+                  </Text>
+                </View>
               </View>
             </View>
           </View>
@@ -165,7 +195,7 @@ const styles = StyleSheet.create({
   cardTextContainer: { marginLeft: 16 },
   cardLabel: { fontSize: 10, color: Colors.slate[500], marginBottom: 2 },
   cardValue: { fontSize: 14, fontFamily: Fonts.sansMedium, color: Colors.white },
-  statusDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: Colors.green[500], marginRight: 12 },
+  statusDot: { width: 10, height: 10, borderRadius: 5, marginRight: 12 },
   cardDivider: { height: 1, backgroundColor: Colors.border, marginHorizontal: 16 },
 });
 

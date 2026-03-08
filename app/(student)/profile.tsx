@@ -1,5 +1,5 @@
 import { Stack, useFocusEffect, useRouter } from 'expo-router';
-import { doc, getDoc } from 'firebase/firestore';
+import { Timestamp, doc, getDoc } from 'firebase/firestore';
 import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
@@ -15,6 +15,21 @@ import { useAuth } from '../../src/context';
 import { db } from '../../src/services/firebase';
 import { AppUser } from '../../src/types';
 import { Colors, Fonts } from '../../theme';
+
+function formatExpiry(ts?: Timestamp): string | null {
+  if (!ts) return null;
+  const d = ts.toDate();
+  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+}
+
+function daysRemaining(ts?: Timestamp): number | null {
+  if (!ts) return null;
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  const exp = ts.toDate();
+  exp.setHours(0, 0, 0, 0);
+  return Math.round((exp.getTime() - now.getTime()) / 86400000);
+}
 
 const roleLabel = (role?: string) => {
   if (role === 'admin') return 'Administrador';
@@ -126,6 +141,18 @@ const StudentProfileScreen: React.FC = () => {
                 <Text style={styles.cardValue}>{profileData?.plan || '—'}</Text>
               </View>
             </View>
+            {profileData?.planExpiresAt && (
+              <>
+                <View style={styles.cardDivider} />
+                <View style={styles.cardRow}>
+                  <Icon name="event" size={20} color={Colors.slate[500]} />
+                  <View style={styles.cardTextContainer}>
+                    <Text style={styles.cardLabel}>Válido até</Text>
+                    <Text style={styles.cardValue}>{formatExpiry(profileData.planExpiresAt)}</Text>
+                  </View>
+                </View>
+              </>
+            )}
             <View style={styles.cardDivider} />
             <View style={styles.cardRow}>
               <View style={[styles.statusDot, { backgroundColor: profileData?.enrollmentActive !== false ? Colors.green[500] : Colors.red[500] }]} />
@@ -134,6 +161,12 @@ const StudentProfileScreen: React.FC = () => {
                 <Text style={styles.cardValue}>
                   {profileData?.enrollmentActive !== false ? 'Ativo para treinar' : 'Matrícula inativa'}
                 </Text>
+                {(() => {
+                  const days = daysRemaining(profileData?.planExpiresAt);
+                  if (days === null) return null;
+                  if (days <= 0) return <Text style={styles.expiryExpired}>Plano vencido</Text>;
+                  return <Text style={styles.expiryOk}>Vence em {days} dia{days !== 1 ? 's' : ''}</Text>;
+                })()}
               </View>
             </View>
           </View>
@@ -171,6 +204,8 @@ const styles = StyleSheet.create({
   cardLabel: { fontSize: 10, color: Colors.slate[500], marginBottom: 2 },
   cardValue: { fontSize: 14, fontFamily: Fonts.sansMedium, color: Colors.white },
   statusDot: { width: 10, height: 10, borderRadius: 5, marginRight: 6 },
+  expiryOk: { fontSize: 11, fontFamily: Fonts.sansMedium, color: Colors.textMuted, marginTop: 2 },
+  expiryExpired: { fontSize: 11, fontFamily: Fonts.sansBold, color: Colors.red[500], marginTop: 2 },
   logoutButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 16, borderRadius: 16, borderWidth: 1, borderColor: 'rgba(239,68,68,0.3)', backgroundColor: 'rgba(239,68,68,0.1)', marginTop: 8 },
   logoutButtonText: { color: Colors.red[500], fontFamily: Fonts.sansBold, fontSize: 14, marginLeft: 8 },
 });

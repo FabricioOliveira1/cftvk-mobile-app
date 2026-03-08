@@ -2,12 +2,22 @@ import { Timestamp } from 'firebase/firestore';
 
 export type UserRole = 'admin' | 'coach' | 'student';
 
+export type PlanType = 'mensal' | 'trimestral' | 'semestral';
+
+export const PLAN_CONFIG: Record<PlanType, { label: string; days: number }> = {
+  mensal:     { label: 'Mensal',     days: 30  },
+  trimestral: { label: 'Trimestral', days: 90  },
+  semestral:  { label: 'Semestral',  days: 180 },
+};
+
 export interface AppUser {
   id: string;
   name: string;
   email: string;
   role: UserRole;
   plan?: string;
+  planType?: PlanType;
+  planExpiresAt?: Timestamp;
   enrollmentActive?: boolean;
   phone?: string;
   birthDate?: string;
@@ -31,7 +41,7 @@ export interface Class {
   sessions?: Session[];
 }
 
-export type ReservationStatus = 'BOOKED' | 'CHECKED_IN' | 'NO_SHOW';
+export type ReservationStatus = 'BOOKED';
 
 export interface Reservation {
   id: string;
@@ -41,7 +51,6 @@ export interface Reservation {
   classDate?: string; // YYYY-MM-DD — denormalizado para checar se a aula já passou
   classTime?: string; // HH:mm    — denormalizado para checar se a aula já passou
   createdAt: Timestamp;
-  checkedInAt?: Timestamp; // quando o check-in foi realizado (preenchido pela CF)
 }
 
 export type NewClassPayload = Omit<Class, 'id' | 'createdBy'>;

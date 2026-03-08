@@ -16,25 +16,22 @@ import {
 import Icon from '../components/Icon';
 import { useAuth } from '../src/context';
 import {
-  callAdminCheckIn,
-  callCheckIn,
   cancelReservation,
   createReservation,
   deleteClass,
   getReservationsByClass,
-  getUserActiveReservationCount,
+  getUserDayReservationStatus,
   getUserReservationForClass,
 } from '../src/services';
 import { db } from '../src/services/firebase';
-import { Class, Reservation, ReservationStatus, Session } from '../src/types';
+import { Class, Reservation, Session } from '../src/types';
 import { Colors, Fonts } from '../theme';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
-interface AttendeeWithName extends Omit<Reservation, 'checkedInAt'> {
+interface AttendeeWithName extends Reservation {
   displayName: string;
   plan?: string;
-  checkedInAt?: string; // formatado HH:mm para exibição
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -53,14 +50,6 @@ function formatDateFull(dateStr?: string): string {
   const [y, m, d] = dateStr.split('-').map(Number);
   const date = new Date(y, m - 1, d);
   return `${DAY_NAMES_FULL[date.getDay()]}, ${d} de ${MONTH_NAMES_FULL[m - 1]}`.toUpperCase();
-}
-
-function formatTimestamp(ts?: any): string {
-  if (!ts) return '';
-  const date = ts.toDate ? ts.toDate() : new Date(ts);
-  const hh = String(date.getHours()).padStart(2, '0');
-  const mm = String(date.getMinutes()).padStart(2, '0');
-  return `${hh}:${mm}`;
 }
 
 // ── Session helpers ────────────────────────────────────────────────────────────
@@ -85,10 +74,10 @@ function isWodSession(title: string): boolean {
   return title.toLowerCase().includes('wod');
 }
 
-function isCheckInWindowExpired(cls: Class): boolean {
-  const [y, m, d] = cls.date.split('-').map(Number);
-  const [h, min] = cls.time.split(':').map(Number);
-  return new Date() > new Date(y, m - 1, d, h, min + 15, 0);
+function getClassDateTime(date: string, time: string): Date {
+  const [y, m, d] = date.split('-').map(Number);
+  const [h, min] = time.split(':').map(Number);
+  return new Date(y, m - 1, d, h, min, 0);
 }
 
 // ── Sub-components ─────────────────────────────────────────────────────────────
@@ -171,8 +160,7 @@ const ClassDetailScreen: React.FC = () => {
           const userSnap = await getDoc(doc(db, 'users', r.userId));
           const name = userSnap.exists() ? (userSnap.data().name as string) : 'Usuário';
           const plan = userSnap.exists() ? (userSnap.data().plan as string | undefined) : undefined;
-          const checkedInAt = r.status === 'CHECKED_IN' ? formatTimestamp(r.checkedInAt ?? r.createdAt) : undefined;
-          return { ...r, displayName: name, plan, checkedInAt };
+          return { ...r, displayName: name, plan };
         })
       );
       setAttendees(withNames);
@@ -185,53 +173,38 @@ const ClassDetailScreen: React.FC = () => {
     loadData();
   }, [id]);
 
-  // Check-in pelo admin (sem restrição de tempo)
-  const handleCheckIn = async (reservation: AttendeeWithName) => {
-    try {
-      await callAdminCheckIn(reservation.id);
-      setAttendees((prev) =>
-        prev.map((a) =>
-          a.id === reservation.id
-            ? { ...a, status: 'CHECKED_IN' as ReservationStatus, checkedInAt: formatTimestamp(new Date()) }
-            : a
-        )
-      );
-    } catch {
-      Alert.alert('Erro', 'Não foi possível registrar o check-in.');
-    }
-  };
-
-  // Check-in pelo próprio aluno (validado server-side: janela até classStart + 15min)
-  const handleStudentCheckIn = async (reservation: AttendeeWithName) => {
-    try {
-      await callCheckIn(reservation.id);
-      setAttendees((prev) =>
-        prev.map((a) =>
-          a.id === reservation.id
-            ? { ...a, status: 'CHECKED_IN' as ReservationStatus, checkedInAt: formatTimestamp(new Date()) }
-            : a
-        )
-      );
-    } catch (e: any) {
-      if (e?.code === 'functions/failed-precondition') {
-        Alert.alert('Tempo esgotado', 'A janela de check-in encerrou 15 minutos após o início da aula.');
-      } else {
-        Alert.alert('Erro', 'Não foi possível registrar o check-in.');
-      }
-    }
-  };
-
   const handleReserve = async () => {
     if (!appUser || !id || !classData) return;
     if (attendees.length >= classData.capacity) {
       Alert.alert('Aula lotada', 'Não há mais vagas disponíveis.');
       return;
     }
+    const classStart = getClassDateTime(classData.date, classData.time);
+    const opensAt = new Date(classStart.getTime() - 12 * 60 * 60 * 1000);
+    const deadline = new Date(classStart.getTime() + 15 * 60 * 1000);
+    const now = new Date();
+    if (now < opensAt) {
+      const hh = String(opensAt.getHours()).padStart(2, '0');
+      const mm = String(opensAt.getMinutes()).padStart(2, '0');
+      Alert.alert('Reservas fechadas', `As reservas para esta aula abrem às ${hh}:${mm}.`);
+      return;
+    }
+    if (now > deadline) {
+      Alert.alert('Reservas encerradas', 'As reservas encerraram 15 minutos após o início da aula.');
+      return;
+    }
     setReserving(true);
     try {
-      const activeCount = await getUserActiveReservationCount(appUser.id);
-      if (activeCount >= 1) {
-        Alert.alert('Limite atingido', 'Você já possui uma aula reservada. Cancele a reserva atual para agendar uma nova.');
+      const dayReservation = await getUserDayReservationStatus(appUser.id, classData.date);
+      if (dayReservation) {
+        const now2 = new Date();
+        const currentTime = `${String(now2.getHours()).padStart(2, '0')}:${String(now2.getMinutes()).padStart(2, '0')}`;
+        const alreadyHappened = dayReservation.classTime && dayReservation.classTime < currentTime;
+        if (alreadyHappened) {
+          Alert.alert('Limite diário atingido', 'Você já treinou hoje. Só é permitido um treino por dia.');
+        } else {
+          Alert.alert('Limite diário atingido', 'Você já possui uma aula reservada hoje. Cancele a reserva atual para agendar outra.');
+        }
         return;
       }
       const reservationId = await createReservation(id, appUser.id, classData.date, classData.time);
@@ -244,7 +217,12 @@ const ClassDetailScreen: React.FC = () => {
   };
 
   const handleCancelMyReservation = async () => {
-    if (!myReservationId) return;
+    if (!myReservationId || !classData) return;
+    const classStart = getClassDateTime(classData.date, classData.time);
+    if (new Date() >= classStart) {
+      Alert.alert('Cancelamento não permitido', 'O prazo de cancelamento encerrou no início da aula.');
+      return;
+    }
     setReserving(true);
     try {
       await cancelReservation(myReservationId);
@@ -392,8 +370,6 @@ const ClassDetailScreen: React.FC = () => {
               )}
               {attendees.map((attendee) => {
                 const isMe = appUser?.id === attendee.userId;
-                const windowExpired = classData ? isCheckInWindowExpired(classData) : false;
-                const isNoShow = attendee.status === 'NO_SHOW' || (windowExpired && attendee.status === 'BOOKED');
                 return (
                   <View
                     key={attendee.id}
@@ -409,56 +385,22 @@ const ClassDetailScreen: React.FC = () => {
                       )}
                     </View>
 
-                    {/* Middle: name + status */}
+                    {/* Middle: name + plano */}
                     <View style={styles.attendeeInfo}>
                       <Text style={styles.attendeeName}>{attendee.displayName}</Text>
-                      {attendee.status === 'CHECKED_IN' ? (
-                        <View style={styles.attendeeStatusRow}>
-                          <Icon name="check-circle" size={13} color={Colors.primary} />
-                          <Text style={styles.attendeeCheckedInText}>
-                            {isMe
-                              ? `Check-in realizado às ${attendee.checkedInAt ?? '--'}`
-                              : 'Check-in realizado'}
-                          </Text>
-                        </View>
-                      ) : isNoShow ? (
-                        <View style={styles.attendeeStatusRow}>
-                          <Icon name="cancel" size={13} color={Colors.red[500]} />
-                          <Text style={styles.attendeeNoShowText}>Não compareceu</Text>
-                        </View>
-                      ) : (
-                        <Text style={styles.attendeePlanText}>
-                          {attendee.plan ? `Aluno ${attendee.plan}` : 'Aluno'}
-                        </Text>
-                      )}
+                      <Text style={styles.attendeePlanText}>
+                        {attendee.plan ? `Aluno ${attendee.plan}` : 'Aluno'}
+                      </Text>
                     </View>
 
-                    {/* Right: action */}
-                    {appUser?.role === 'admin' ? (
-                      attendee.status === 'CHECKED_IN' ? (
-                        <TouchableOpacity
-                          style={styles.moreButton}
-                          onPress={() => { setSelectedReservation(attendee); setSheetOpen(true); }}
-                        >
-                          <Icon name="more-vert" size={24} color={Colors.slate[400]} />
-                        </TouchableOpacity>
-                      ) : (
-                        <TouchableOpacity
-                          style={styles.checkInButton}
-                          onPress={() => handleCheckIn(attendee)}
-                        >
-                          <Text style={styles.checkInButtonText}>Marcar</Text>
-                        </TouchableOpacity>
-                      )
-                    ) : (
-                      isMe && attendee.status === 'BOOKED' && !windowExpired ? (
-                        <TouchableOpacity
-                          style={styles.checkInButton}
-                          onPress={() => handleStudentCheckIn(attendee)}
-                        >
-                          <Text style={styles.checkInButtonText}>Check-in</Text>
-                        </TouchableOpacity>
-                      ) : null
+                    {/* Right: ações do admin */}
+                    {appUser?.role === 'admin' && (
+                      <TouchableOpacity
+                        style={styles.moreButton}
+                        onPress={() => { setSelectedReservation(attendee); setSheetOpen(true); }}
+                      >
+                        <Icon name="more-vert" size={24} color={Colors.slate[400]} />
+                      </TouchableOpacity>
                     )}
                   </View>
                 );
@@ -479,10 +421,12 @@ const ClassDetailScreen: React.FC = () => {
             reserving ? (
               <ActivityIndicator color={Colors.primary} />
             ) : myReservationId ? (
-              <TouchableOpacity style={styles.cancelReserveButton} onPress={handleCancelMyReservation}>
-                <Icon name="event-busy" size={20} color={Colors.red[500]} />
-                <Text style={styles.cancelReserveButtonText}>CANCELAR AGENDAMENTO</Text>
-              </TouchableOpacity>
+              classData && new Date() < getClassDateTime(classData.date, classData.time) ? (
+                <TouchableOpacity style={styles.cancelReserveButton} onPress={handleCancelMyReservation}>
+                  <Icon name="event-busy" size={20} color={Colors.red[500]} />
+                  <Text style={styles.cancelReserveButtonText}>CANCELAR AGENDAMENTO</Text>
+                </TouchableOpacity>
+              ) : null
             ) : (
               <TouchableOpacity style={styles.reserveButton} onPress={handleReserve}>
                 <Icon name="event-available" size={20} color={Colors.backgroundDark} />
@@ -749,18 +693,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 4,
   },
-  attendeeCheckedInText: {
-    color: Colors.primary,
-    fontFamily: Fonts.sansMedium,
-    fontSize: 12,
-  },
   attendeePlanText: {
     color: Colors.textMuted,
-    fontFamily: Fonts.sansMedium,
-    fontSize: 12,
-  },
-  attendeeNoShowText: {
-    color: Colors.red[500],
     fontFamily: Fonts.sansMedium,
     fontSize: 12,
   },
@@ -770,19 +704,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  checkInButton: {
-    backgroundColor: Colors.primary,
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 8,
-  },
-  checkInButtonText: {
-    color: Colors.backgroundDark,
-    fontSize: 11,
-    fontFamily: Fonts.sansBold,
-    textTransform: 'uppercase',
-  },
-
   // Empty state
   emptyText: {
     color: Colors.textMuted,

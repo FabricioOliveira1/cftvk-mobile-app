@@ -7,10 +7,14 @@ service cloud.firestore {
       allow read: if request.auth != null;
       // Criação: apenas Cloud Functions via admin SDK (allow create: if false)
       allow create: if false;
-      // Atualização: apenas o próprio usuário, sem poder alterar role
+      // Atualização: apenas o próprio usuário, sem poder alterar role nem campos de matrícula
+      // Campos de matrícula (enrollmentActive, planType, planExpiresAt, plan) são admin-only via CF
       allow update: if request.auth != null
         && request.auth.uid == userId
-        && request.resource.data.role == resource.data.role;
+        && request.resource.data.role           == resource.data.role
+        && request.resource.data.enrollmentActive == resource.data.enrollmentActive
+        && request.resource.data.planType        == resource.data.planType
+        && request.resource.data.planExpiresAt   == resource.data.planExpiresAt;
       allow delete: if false;
     }
 
@@ -23,9 +27,10 @@ service cloud.firestore {
         && request.resource.data.userId == request.auth.uid
         && request.resource.data.status == 'BOOKED';
 
-      // Cancelar: apenas o próprio usuário pode deletar sua reserva
+      // Cancelar: apenas o próprio usuário pode deletar sua reserva (status sempre BOOKED).
       allow delete: if request.auth != null
-        && resource.data.userId == request.auth.uid;
+        && resource.data.userId == request.auth.uid
+        && resource.data.status == 'BOOKED';
 
       // Atualizar status: somente Cloud Functions via admin SDK
       allow update: if false;
