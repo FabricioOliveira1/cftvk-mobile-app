@@ -15,7 +15,7 @@ import Icon from '../../components/Icon';
 import { useAuth } from '../../src/context';
 import { db } from '../../src/services/firebase';
 import { getHistoryPage } from '../../src/services';
-import { Class, ReservationStatus } from '../../src/types';
+import { Class } from '../../src/types';
 import { Colors, Fonts } from '../../theme';
 
 // ── Constants ──────────────────────────────────────────────────────────────────
@@ -27,7 +27,6 @@ const PAGE_SIZE = 10;
 interface HistoryItem {
   reservationId: string;
   reservationDoc: QueryDocumentSnapshot;
-  status: ReservationStatus;
   cls: Class;
 }
 
@@ -107,7 +106,6 @@ const StudentHistoryScreen: React.FC = () => {
               return {
                 reservationId: resDoc.id,
                 reservationDoc: resDoc,
-                status: (data.status ?? 'NO_SHOW') as ReservationStatus,
                 cls: { id: classSnap.id, ...classSnap.data() } as Class,
               };
             })
@@ -153,7 +151,6 @@ const StudentHistoryScreen: React.FC = () => {
       }}
       onPress={() => router.push({ pathname: '/class-detail', params: { id: item.cls.id } })}
       myReservationId={item.reservationId}
-      reservationStatus={item.status}
       historyMode
     />
   );

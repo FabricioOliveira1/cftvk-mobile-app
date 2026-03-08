@@ -15,12 +15,11 @@ import Icon from '../../components/Icon';
 import ScreenHeader from '../../components/ScreenHeader';
 import { useAuth } from '../../src/context';
 import {
-  callCheckIn,
   cancelReservation,
   createReservation,
   getClassesByDate,
   getReservationCount,
-  getUserActiveReservationCount,
+  getUserDayReservationStatus,
   getUserPRs,
   getUserReservationForClass,
 } from '../../src/services';
@@ -66,9 +65,9 @@ function formatDateLabel(date: Date): string {
   const tomorrow = new Date(today);
   tomorrow.setDate(today.getDate() + 1);
   const time = `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
-  if (date.toDateString() === today.toDateString()) return `hoje às ${time}`;
-  if (date.toDateString() === tomorrow.toDateString()) return `amanhã às ${time}`;
-  return `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')} às ${time}`;
+  if (date.toDateString() === today.toDateString()) return `hoje\nàs ${time}`;
+  if (date.toDateString() === tomorrow.toDateString()) return `amanhã\nàs ${time}`;
+  return `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')}\nàs ${time}`;
 }
 
 // ── Time status for reservation window ────────────────────────────────────────
@@ -81,17 +80,16 @@ function computeTimeStatus(cls: Class): TimeStatus | undefined {
   const now = new Date();
   const classStart = getClassDateTime(cls.date, cls.time);
   const opensAt = new Date(classStart.getTime() - 12 * 60 * 60 * 1000);
-  const deadline = new Date(classStart.getTime() - 15 * 60 * 1000);
+  const deadline = new Date(classStart.getTime() + 15 * 60 * 1000);
   if (now < opensAt) return { type: 'pending', opensLabel: `Abre ${formatDateLabel(opensAt)}` };
   if (now > deadline) return { type: 'expired' };
   return undefined;
 }
 
-function isInCheckInWindow(date: string, time: string): boolean {
-  const classStart = getClassDateTime(date, time);
-  const windowEnd = new Date(classStart.getTime() + 15 * 60 * 1000);
-  const now = new Date();
-  return now >= classStart && now <= windowEnd;
+function isClassEnded(date: string, time: string): boolean {
+  const classEnd = getClassDateTime(date, time);
+  classEnd.setMinutes(classEnd.getMinutes() + 60);
+  return new Date() > classEnd;
 }
 
 // ── Compute next class ─────────────────────────────────────────────────────────
@@ -120,12 +118,6 @@ const StudentDashboardScreen: React.FC = () => {
   const [latestPR, setLatestPR] = useState<PR | null>(null);
   const [loading, setLoading] = useState(true);
   const [reservingClassId, setReservingClassId] = useState<string | null>(null);
-  const [, setTick] = useState(0);
-
-  useEffect(() => {
-    const id = setInterval(() => setTick((t) => t + 1), 30_000);
-    return () => clearInterval(id);
-  }, []);
 
   const loadData = useCallback(async () => {
     if (!appUser) return;
@@ -182,12 +174,19 @@ const StudentDashboardScreen: React.FC = () => {
       return;
     }
 
-    // Regra: apenas 1 reserva ativa por vez
+    // Regra: apenas 1 reserva por dia
     setReservingClassId(cls.id);
     try {
-      const activeCount = await getUserActiveReservationCount(appUser.id);
-      if (activeCount >= 1) {
-        Alert.alert('Limite atingido', 'Você já possui uma aula reservada. Cancele a reserva atual para agendar uma nova.');
+      const dayReservation = await getUserDayReservationStatus(appUser.id, cls.date);
+      if (dayReservation) {
+        const now = new Date();
+        const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+        const alreadyHappened = dayReservation.classTime && dayReservation.classTime < currentTime;
+        if (alreadyHappened) {
+          Alert.alert('Limite diário atingido', 'Você já treinou hoje. Só é permitido um treino por dia.');
+        } else {
+          Alert.alert('Limite diário atingido', 'Você já possui uma aula reservada hoje. Cancele a reserva atual para agendar outra.');
+        }
         return;
       }
 
@@ -206,29 +205,14 @@ const StudentDashboardScreen: React.FC = () => {
     }
   };
 
-  const handleCheckIn = async (classId: string) => {
-    const item = todayClasses.find((i) => i.cls.id === classId);
-    if (!item?.reservationId) return;
-    setReservingClassId(classId);
-    try {
-      await callCheckIn(item.reservationId);
-      setTodayClasses((prev) => {
-        const updated = prev.map((i) =>
-          i.cls.id === classId ? { ...i, status: 'CHECKED_IN' as ReservationStatus } : i
-        );
-        setNextClass(computeNextClass(updated));
-        return updated;
-      });
-    } catch {
-      Alert.alert('Erro', 'Não foi possível realizar o check-in.');
-    } finally {
-      setReservingClassId(null);
-    }
-  };
-
   const handleCancelReservation = async (classId: string) => {
     const item = todayClasses.find((i) => i.cls.id === classId);
     if (!item?.reservationId) return;
+    const classStart = getClassDateTime(item.cls.date, item.cls.time);
+    if (new Date() >= classStart) {
+      Alert.alert('Cancelamento não permitido', 'O prazo de cancelamento encerrou no início da aula.');
+      return;
+    }
     setReservingClassId(classId);
     try {
       await cancelReservation(item.reservationId);
@@ -325,7 +309,11 @@ const StudentDashboardScreen: React.FC = () => {
                   contentContainerStyle={styles.classesScroll}
                 >
                   {todayClasses.map(({ cls, count, reservationId, status }) => {
+                    const classStart = getClassDateTime(cls.date, cls.time);
+                    const now = new Date();
+                    const started = now >= classStart;
                     const timeStatus = computeTimeStatus(cls);
+                    const ended = isClassEnded(cls.date, cls.time);
                     return (
                     <View key={cls.id} style={styles.classCardWrapper}>
                       <ClassListItem
@@ -338,15 +326,14 @@ const StudentDashboardScreen: React.FC = () => {
                           isFull: count >= cls.capacity,
                           opacity: 1,
                         }}
-                        onPress={() => router.push({ pathname: '/class-detail', params: { id: cls.id } })}
+                        onPress={ended ? undefined : () => router.push({ pathname: '/class-detail', params: { id: cls.id } })}
                         myReservationId={reservationId ?? undefined}
                         onReserve={() => handleReserve(cls)}
                         onCancelReservation={() => handleCancelReservation(cls.id)}
-                        onCheckIn={() => handleCheckIn(cls.id)}
-                        reservationStatus={status ?? undefined}
-                        isCheckInWindow={isInCheckInWindow(cls.date, cls.time)}
                         reserving={reservingClassId === cls.id}
                         timeStatus={timeStatus}
+                        classEnded={ended}
+                        classStarted={started}
                       />
                     </View>
                   );

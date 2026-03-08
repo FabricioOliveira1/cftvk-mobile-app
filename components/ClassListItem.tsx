@@ -2,7 +2,6 @@
 import { MaterialIcons } from '@expo/vector-icons';
 import React from 'react';
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { ReservationStatus } from '../src/types';
 import { Colors, Fonts } from '../theme';
 import Icon from './Icon';
 
@@ -26,12 +25,11 @@ interface ClassListItemProps {
   myReservationId?: string;
   onReserve?: () => void;
   onCancelReservation?: () => void;
-  onCheckIn?: () => void;
-  reservationStatus?: ReservationStatus;
-  isCheckInWindow?: boolean;
   reserving?: boolean;
   timeStatus?: TimeStatus;
   historyMode?: boolean;
+  classEnded?: boolean;
+  classStarted?: boolean;
 }
 
 const ClassListItem: React.FC<ClassListItemProps> = ({
@@ -40,55 +38,30 @@ const ClassListItem: React.FC<ClassListItemProps> = ({
   myReservationId,
   onReserve,
   onCancelReservation,
-  onCheckIn,
-  reservationStatus,
-  isCheckInWindow = false,
   reserving = false,
   timeStatus,
   historyMode = false,
+  classEnded = false,
+  classStarted = false,
 }) => {
   const hasReservation = !!myReservationId;
 
   const renderRightAction = () => {
-    // Modo histórico: badge read-only, sem ações
-    if (historyMode && hasReservation) {
-      if (reservationStatus === 'CHECKED_IN') {
-        return (
-          <View style={styles.confirmedBadge}>
-            <Icon name="check-circle" size={14} color={Colors.green[500]} />
-            <Text style={styles.confirmedText}>Presente</Text>
-          </View>
-        );
-      }
-      return (
-        <View style={styles.noShowBadge}>
-          <Icon name="cancel" size={14} color={Colors.textMuted} />
-          <Text style={styles.noShowText}>Faltou</Text>
-        </View>
-      );
-    }
+    // Modo histórico: sem ações
+    if (historyMode) return null;
+
     if (reserving) {
       return <ActivityIndicator size="small" color={Colors.primary} style={styles.actionLoader} />;
     }
-    // Se já tem reserva, exibe ação conforme status e janela de check-in
+    // Se já tem reserva
     if (hasReservation) {
-      if (reservationStatus === 'CHECKED_IN') {
+      // Aula encerrada, já começou ou prazo expirado: badge "Encerrado"
+      if (classEnded || classStarted || timeStatus?.type === 'expired') {
         return (
-          <View style={styles.confirmedBadge}>
-            <Icon name="check-circle" size={14} color={Colors.green[500]} />
-            <Text style={styles.confirmedText}>Confirmado</Text>
+          <View style={styles.lockedBadge}>
+            <Icon name="lock-clock" size={12} color={Colors.textMuted} />
+            <Text style={styles.lockedText}>Encerrado</Text>
           </View>
-        );
-      }
-      if (isCheckInWindow) {
-        return (
-          <TouchableOpacity
-            style={styles.checkInButton}
-            onPress={onCheckIn}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <Text style={styles.checkInButtonText}>Check-in</Text>
-          </TouchableOpacity>
         );
       }
       return (
@@ -133,11 +106,15 @@ const ClassListItem: React.FC<ClassListItemProps> = ({
     );
   };
 
-  // Card dimmed apenas quando encerrado e sem reserva própria
-  const cardOpacity = (!hasReservation && timeStatus?.type === 'expired') ? 0.5 : item.opacity;
+  const cardOpacity = classEnded ? 0.5 : item.opacity;
 
   return (
-    <TouchableOpacity style={[styles.classCard, { opacity: cardOpacity }]} onPress={onPress}>
+    <TouchableOpacity
+      style={[styles.classCard, { opacity: cardOpacity }]}
+      onPress={onPress}
+      disabled={classEnded}
+      activeOpacity={classEnded ? 1 : 0.7}
+    >
       <View style={styles.classInfo}>
         <View style={[styles.classIconContainer, { backgroundColor: `${item.color}20`, borderColor: `${item.color}30` }]}>
           <Icon name={item.icon} size={24} color={item.color} />
@@ -220,49 +197,6 @@ const styles = StyleSheet.create({
   actionLoader: {
     width: 60,
     alignItems: 'center',
-  },
-  checkInButton: {
-    backgroundColor: Colors.primary,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 10,
-  },
-  checkInButtonText: {
-    color: Colors.backgroundDark,
-    fontFamily: Fonts.sansBold,
-    fontSize: 12,
-  },
-  confirmedBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 10,
-    backgroundColor: 'rgba(34,197,94,0.1)',
-    borderWidth: 1,
-    borderColor: 'rgba(34,197,94,0.3)',
-  },
-  confirmedText: {
-    color: Colors.green[500],
-    fontFamily: Fonts.sansBold,
-    fontSize: 12,
-  },
-  noShowBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 10,
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-  },
-  noShowText: {
-    color: Colors.textMuted,
-    fontFamily: Fonts.sansBold,
-    fontSize: 12,
   },
 });
 
