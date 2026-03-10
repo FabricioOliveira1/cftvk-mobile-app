@@ -19,15 +19,28 @@ function RootLayoutNav() {
       segments[0] === 'edit-member' ||
       segments[0] === 'class-detail' ||
       segments[0] === 'new-class' ||
-      segments[0] === 'prs';
+      segments[0] === 'prs' ||
+      segments[0] === 'set-password';
 
     if (!firebaseUser && inProtectedRoute) {
       router.replace('/');
-    } else if (firebaseUser && appUser && segments[0] === undefined) {
-      if (appUser.role === 'admin') {
-        router.replace('/(admin)/dashboard');
-      } else {
-        router.replace('/(student)/dashboard');
+      return;
+    }
+
+    if (firebaseUser && appUser) {
+      // Primeiro acesso: forçar troca de senha antes de entrar no app
+      if (appUser.mustChangePassword && segments[0] !== 'set-password') {
+        router.replace('/set-password');
+        return;
+      }
+      // Já trocou a senha mas ainda está na tela de troca → redireciona ao dashboard
+      if (segments[0] === 'set-password' && !appUser.mustChangePassword) {
+        router.replace(appUser.role === 'admin' ? '/(admin)/dashboard' : '/(student)/dashboard');
+        return;
+      }
+      // Login normal: redireciona ao dashboard
+      if (segments[0] === undefined) {
+        router.replace(appUser.role === 'admin' ? '/(admin)/dashboard' : '/(student)/dashboard');
       }
     }
   }, [firebaseUser, appUser, loading, segments]);
@@ -55,6 +68,7 @@ function RootLayoutNav() {
         }}
       />
       <Stack.Screen name="prs" />
+      <Stack.Screen name="set-password" />
     </Stack>
   );
 }

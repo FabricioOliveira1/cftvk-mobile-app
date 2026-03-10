@@ -21,6 +21,7 @@ export interface AppUser {
   enrollmentActive?: boolean;
   phone?: string;
   birthDate?: string;
+  mustChangePassword?: boolean;
   createdAt: Timestamp;
 }
 
