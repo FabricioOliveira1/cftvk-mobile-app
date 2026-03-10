@@ -20,6 +20,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import Icon from '../components/Icon';
+import { useAuth } from '../src/context';
 import { createMember, deleteMember, updateMember } from '../src/services';
 import { db, functions } from '../src/services/firebase';
 import { PLAN_CONFIG, PlanType, UserRole } from '../src/types';
@@ -52,6 +53,8 @@ const formatBirthDate = (value: string) => {
 
 const EditMemberScreen: React.FC = () => {
   const router = useRouter();
+  const { appUser } = useAuth();
+  const isAdmin = appUser?.role === 'admin';
   const { id } = useLocalSearchParams<{ id?: string }>();
   const isEditing = !!id;
 
@@ -124,7 +127,7 @@ const EditMemberScreen: React.FC = () => {
         // 1. Atualiza campos pessoais via client (campos sem restrição de matrícula)
         await updateMember(id, {
           name: name.trim(),
-          role,
+          ...(isAdmin && { role }),
           phone: phone.trim(),
           birthDate: birthDate.trim(),
         });
@@ -133,7 +136,7 @@ const EditMemberScreen: React.FC = () => {
         const enrollmentChanged = enrollmentActive !== origEnrollmentActive.current;
         const planChanged = planType !== origPlanType.current;
 
-        if (enrollmentChanged || planChanged) {
+        if (isAdmin && (enrollmentChanged || planChanged)) {
           await httpsCallable(functions, 'updateMemberEnrollment')({
             uid: id,
             planType: planType ?? undefined,
@@ -160,7 +163,7 @@ const EditMemberScreen: React.FC = () => {
     }
     setSaving(true);
     try {
-      await createMember(name.trim(), email.trim(), role, password);
+      await createMember(name.trim(), email.trim(), role, password, planType ?? undefined, enrollmentActive);
       router.back();
     } catch (e: unknown) {
       const msg = e && typeof e === 'object' && 'code' in e
@@ -322,38 +325,36 @@ const EditMemberScreen: React.FC = () => {
             </View>
           </View>
 
-          {/* PERFIL DO USUÁRIO */}
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Icon name="verified" size={18} color={Colors.primary} />
-              <Text style={styles.sectionTitle}>PERFIL DO USUÁRIO</Text>
-            </View>
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Tipo de Usuário</Text>
-              <View style={styles.chipsRow}>
-                {PERFIS.map((perfil) => (
-                  <TouchableOpacity
-                    key={perfil.value}
-                    style={[styles.chip, role === perfil.value && styles.chipActive]}
-                    onPress={() => setRole(perfil.value)}
-                  >
-                    <Text style={[styles.chipText, role === perfil.value && styles.chipTextActive]}>
-                      {perfil.label}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+          {/* PERFIL DO USUÁRIO — apenas admin */}
+          {isAdmin && (
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <Icon name="verified" size={18} color={Colors.primary} />
+                <Text style={styles.sectionTitle}>PERFIL DO USUÁRIO</Text>
               </View>
-            </View>
-            {isEditing && (
               <View style={styles.inputGroup}>
-                <Text style={styles.label}>Plano Atual</Text>
+                <Text style={styles.label}>Tipo de Usuário</Text>
+                <View style={styles.chipsRow}>
+                  {PERFIS.map((perfil) => (
+                    <TouchableOpacity
+                      key={perfil.value}
+                      style={[styles.chip, role === perfil.value && styles.chipActive]}
+                      onPress={() => setRole(perfil.value)}
+                    >
+                      <Text style={[styles.chipText, role === perfil.value && styles.chipTextActive]}>
+                        {perfil.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Plano</Text>
                 <TouchableOpacity style={styles.inputContainer} onPress={handleOpenPlanModal}>
                   <Text style={[styles.planText, !planType && styles.planTextMuted]}>{planLabel}</Text>
                   <Icon name="expand-more" size={22} color={Colors.textMuted} />
                 </TouchableOpacity>
               </View>
-            )}
-            {isEditing && (
               <View style={styles.statusCard}>
                 <View>
                   <Text style={styles.statusTitle}>Status da Matrícula</Text>
@@ -368,13 +369,13 @@ const EditMemberScreen: React.FC = () => {
                   thumbColor={Colors.white}
                 />
               </View>
-            )}
-          </View>
+            </View>
+          )}
         </ScrollView>
 
         {/* Footer buttons */}
         <View style={styles.footer}>
-          {isEditing && (
+          {isEditing && isAdmin && (
             <TouchableOpacity style={styles.removeButton} onPress={handleRemove}>
               <Icon name="delete" size={20} color={Colors.red[500]} />
               <Text style={styles.removeButtonText}>Remover Aluno da Base</Text>

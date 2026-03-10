@@ -37,8 +37,10 @@ export async function createMember(
   name: string,
   email: string,
   role: UserRole,
-  password: string
+  password: string,
+  planType?: string,
+  enrollmentActive?: boolean
 ): Promise<void> {
   const createUser = httpsCallable(functions, 'createUser');
-  await createUser({ name: name.trim(), email: email.trim(), password, role });
+  await createUser({ name: name.trim(), email: email.trim(), role, password, planType, enrollmentActive });
 }

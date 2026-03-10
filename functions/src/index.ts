@@ -116,14 +116,16 @@ export const createUser = onCall(async (request) => {
     throw new HttpsError('permission-denied', 'Apenas administradores podem usar esta função.');
   }
 
-  const { name, email, password, role } = request.data as {
+  const { name, email, role, password, planType, enrollmentActive } = request.data as {
     name: string;
     email: string;
-    password: string;
     role: string;
+    password: string;
+    planType?: string;
+    enrollmentActive?: boolean;
   };
 
-  if (!name || !email || !password || !role) {
+  if (!name || !email || !role || !password) {
     throw new HttpsError('invalid-argument', 'Todos os campos são obrigatórios.');
   }
 
@@ -135,12 +137,27 @@ export const createUser = onCall(async (request) => {
   // Define custom claim no token JWT (elimina lookups futuros de role)
   await admin.auth().setCustomUserClaims(userRecord.uid, { role: safeRole });
 
-  await admin.firestore().doc(`users/${userRecord.uid}`).set({
+  const PLAN_DAYS: Record<string, number>   = { mensal: 30, trimestral: 90, semestral: 180 };
+  const PLAN_LABELS: Record<string, string> = { mensal: 'Mensal', trimestral: 'Trimestral', semestral: 'Semestral' };
+
+  const userData: Record<string, unknown> = {
     name,
     email,
     role: safeRole,
+    enrollmentActive: enrollmentActive ?? true,
+    mustChangePassword: true,
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
-  });
+  };
+
+  if (planType && PLAN_DAYS[planType]) {
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + PLAN_DAYS[planType]);
+    userData.planType     = planType;
+    userData.plan         = PLAN_LABELS[planType];
+    userData.planExpiresAt = admin.firestore.Timestamp.fromDate(expiresAt);
+  }
+
+  await admin.firestore().doc(`users/${userRecord.uid}`).set(userData);
 });
 
 // ---------------------------------------------------------------------------
