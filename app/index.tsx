@@ -1,8 +1,7 @@
-import { signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
+import { signInWithEmailAndPassword } from 'firebase/auth';
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Image,
   KeyboardAvoidingView,
   Platform,
@@ -40,19 +39,6 @@ const LoginScreen: React.FC = () => {
     }
   };
 
-  const handleForgotPassword = async () => {
-    if (!email.trim()) {
-      Alert.alert('Esqueci minha senha', 'Digite seu email primeiro.');
-      return;
-    }
-    try {
-      await sendPasswordResetEmail(auth, email.trim());
-      Alert.alert('Email enviado', 'Verifique sua caixa de entrada para redefinir a senha.');
-    } catch {
-      Alert.alert('Erro', 'Não foi possível enviar o email. Verifique o endereço informado.');
-    }
-  };
-
   return (
     <SafeAreaView style={styles.safeArea}>
       <KeyboardAvoidingView
@@ -84,12 +70,7 @@ const LoginScreen: React.FC = () => {
             </View>
 
             <View style={styles.inputGroup}>
-              <View style={styles.labelRow}>
-                <Text style={styles.label}>Senha</Text>
-                <TouchableOpacity onPress={handleForgotPassword}>
-                  <Text style={styles.forgotPassword}>Esqueci minha senha</Text>
-                </TouchableOpacity>
-              </View>
+              <Text style={styles.label}>Senha</Text>
               <View style={styles.inputContainer}>
                 <Icon name="lock" size={20} color={Colors.textMuted} style={styles.inputIcon} />
                 <TextInput
@@ -166,18 +147,6 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.7)',
     marginLeft: 4,
     marginBottom: 4,
-  },
-  labelRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 4,
-    marginLeft: 4,
-  },
-  forgotPassword: {
-    fontSize: 12,
-    fontFamily: Fonts.sansMedium,
-    color: Colors.primary,
   },
   inputContainer: {
     flexDirection: 'row',
