@@ -3,6 +3,8 @@ import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Modal,
+  Pressable,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -22,8 +24,9 @@ import {
   getUserDayReservationStatus,
   getUserPRs,
   getUserReservationForClass,
+  getWodByDate,
 } from '../../src/services';
-import { Class, PR, ReservationStatus } from '../../src/types';
+import { Class, PR, ReservationStatus, Wod } from '../../src/types';
 import { Colors, Fonts } from '../../theme';
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -115,6 +118,8 @@ const StudentDashboardScreen: React.FC = () => {
 
   const [todayClasses, setTodayClasses] = useState<ClassWithExtra[]>([]);
   const [nextClass, setNextClass] = useState<Class | null>(null);
+  const [todayWod, setTodayWod] = useState<Wod | null>(null);
+  const [wodModalVisible, setWodModalVisible] = useState(false);
   const [latestPR, setLatestPR] = useState<PR | null>(null);
   const [loading, setLoading] = useState(true);
   const [reservingClassId, setReservingClassId] = useState<string | null>(null);
@@ -123,7 +128,11 @@ const StudentDashboardScreen: React.FC = () => {
     if (!appUser) return;
     setLoading(true);
     try {
-      const classes = await getClassesByDate(todayString);
+      const [classes, wod] = await Promise.all([
+        getClassesByDate(todayString),
+        getWodByDate(todayString),
+      ]);
+      setTodayWod(wod);
 
       const [counts, reservations, prs] = await Promise.all([
         Promise.all(classes.map((c) => getReservationCount(c.id).then((n) => ({ id: c.id, count: n })))),
@@ -293,6 +302,26 @@ const StudentDashboardScreen: React.FC = () => {
               </View>
             </View>
 
+            {/* ── WOD do Dia ── */}
+            {todayWod && (
+              <TouchableOpacity
+                style={styles.wodCard}
+                onPress={() => setWodModalVisible(true)}
+                activeOpacity={0.85}
+              >
+                <View style={styles.wodCardTop}>
+                  <View style={styles.wodCardBadge}>
+                    <Icon name="fitness-center" size={14} color={Colors.backgroundDark} />
+                    <Text style={styles.wodCardBadgeText}>WOD DO DIA</Text>
+                  </View>
+                  <Icon name="open-in-new" size={18} color={Colors.backgroundDark} style={{ opacity: 0.6 }} />
+                </View>
+                <Text style={styles.wodCardSessions}>
+                  {todayWod.sessions.map((s) => s.title).join('  •  ')}
+                </Text>
+              </TouchableOpacity>
+            )}
+
             {/* ── Aulas de Hoje ── */}
             <View style={styles.todaySection}>
               <View style={styles.todayHeader}>
@@ -344,6 +373,27 @@ const StudentDashboardScreen: React.FC = () => {
           </>
         )}
       </ScrollView>
+
+      {/* WOD Modal */}
+      <Modal visible={wodModalVisible} transparent animationType="slide" onRequestClose={() => setWodModalVisible(false)}>
+        <Pressable style={styles.modalOverlay} onPress={() => setWodModalVisible(false)}>
+          <Pressable style={styles.modalBox} onPress={() => {}}>
+            <View style={styles.modalHandle} />
+            <Text style={styles.modalTitle}>WOD do Dia</Text>
+            <Text style={styles.modalDate}>{new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' }).toUpperCase()}</Text>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {todayWod?.sessions.map((session) => (
+                <View key={session.id} style={styles.modalSessionCard}>
+                  <Text style={styles.modalSessionTitle}>{session.title.toUpperCase()}</Text>
+                  {session.details ? (
+                    <Text style={styles.modalSessionDetails}>{session.details}</Text>
+                  ) : null}
+                </View>
+              ))}
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -506,6 +556,98 @@ const styles = StyleSheet.create({
     color: Colors.backgroundDark,
     fontFamily: Fonts.sansBold,
     fontSize: 11,
+  },
+
+  // WOD do Dia card
+  wodCard: {
+    backgroundColor: Colors.primary,
+    borderRadius: 20,
+    padding: 18,
+    marginBottom: 20,
+  },
+  wodCardTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  wodCardBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(0,0,0,0.15)',
+    borderRadius: 99,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  wodCardBadgeText: {
+    color: Colors.backgroundDark,
+    fontFamily: Fonts.sansBold,
+    fontSize: 11,
+    letterSpacing: 0.8,
+  },
+  wodCardSessions: {
+    color: Colors.backgroundDark,
+    fontFamily: Fonts.sansMedium,
+    fontSize: 14,
+    opacity: 0.85,
+  },
+
+  // WOD Modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    justifyContent: 'flex-end',
+  },
+  modalBox: {
+    backgroundColor: Colors.cardDark,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    padding: 28,
+    paddingBottom: 48,
+    maxHeight: '80%',
+  },
+  modalHandle: {
+    width: 40,
+    height: 4,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: 20,
+  },
+  modalTitle: {
+    color: Colors.white,
+    fontFamily: Fonts.sansBold,
+    fontSize: 22,
+    marginBottom: 4,
+  },
+  modalDate: {
+    color: Colors.primary,
+    fontFamily: Fonts.sansBold,
+    fontSize: 12,
+    letterSpacing: 0.5,
+    marginBottom: 20,
+  },
+  modalSessionCard: {
+    backgroundColor: Colors.surfaceDark,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 10,
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.primary,
+  },
+  modalSessionTitle: {
+    color: Colors.primary,
+    fontFamily: Fonts.sansBold,
+    fontSize: 12,
+    letterSpacing: 0.8,
+    marginBottom: 6,
+  },
+  modalSessionDetails: {
+    color: Colors.textSecondary,
+    fontFamily: Fonts.sansMedium,
+    fontSize: 14,
+    lineHeight: 20,
   },
 });
 

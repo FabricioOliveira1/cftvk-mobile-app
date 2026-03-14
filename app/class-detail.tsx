@@ -22,6 +22,7 @@ import {
   getReservationsByClass,
   getUserDayReservationStatus,
   getUserReservationForClass,
+  getWodByDate,
 } from '../src/services';
 import { db } from '../src/services/firebase';
 import { Class, Reservation, Session } from '../src/types';
@@ -130,6 +131,7 @@ const ClassDetailScreen: React.FC = () => {
   const { appUser } = useAuth();
 
   const [classData, setClassData] = useState<Class | null>(null);
+  const [wodSessions, setWodSessions] = useState<Session[]>([]);
   const [attendees, setAttendees] = useState<AttendeeWithName[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'treino' | 'presenca'>('treino');
@@ -144,8 +146,16 @@ const ClassDetailScreen: React.FC = () => {
     setLoading(true);
     try {
       const classSnap = await getDoc(doc(db, 'classes', id));
+      let loadedClass: Class | null = null;
       if (classSnap.exists()) {
-        setClassData({ id: classSnap.id, ...classSnap.data() } as Class);
+        loadedClass = { id: classSnap.id, ...classSnap.data() } as Class;
+        setClassData(loadedClass);
+      }
+
+      // Load WOD from wods collection; fallback to embedded sessions for legacy data
+      if (loadedClass) {
+        const wod = await getWodByDate(loadedClass.date);
+        setWodSessions(wod?.sessions ?? loadedClass.sessions ?? []);
       }
 
       const [reservations, myRes] = await Promise.all([
@@ -272,7 +282,6 @@ const ClassDetailScreen: React.FC = () => {
   };
 
   const isFull = classData ? attendees.length >= classData.capacity : false;
-  const sessions = classData?.sessions ?? [];
 
   const screenTitle = classData?.title
     ? `${classData.title.toUpperCase()} WOD`
@@ -339,10 +348,10 @@ const ClassDetailScreen: React.FC = () => {
               </View>
 
               {/* Session cards */}
-              {sessions.length === 0 ? (
-                <Text style={styles.emptyText}>Nenhuma sessão cadastrada para esta aula.</Text>
+              {wodSessions.length === 0 ? (
+                <Text style={styles.emptyText}>Nenhum WOD cadastrado para este dia.{appUser?.role === 'admin' ? '\nUse o botão abaixo para definir o WOD.' : ''}</Text>
               ) : (
-                sessions.map((session) => (
+                wodSessions.map((session) => (
                   <SessionCard key={session.id} session={session} />
                 ))
               )}
@@ -417,22 +426,35 @@ const ClassDetailScreen: React.FC = () => {
       {!loading && (
         <View style={styles.footer}>
           {activeTab === 'treino' ? (
-            /* Botão de reserva — visível para todos na aba TREINO */
-            reserving ? (
-              <ActivityIndicator color={Colors.primary} />
-            ) : myReservationId ? (
-              classData && new Date() < getClassDateTime(classData.date, classData.time) ? (
-                <TouchableOpacity style={styles.cancelReserveButton} onPress={handleCancelMyReservation}>
-                  <Icon name="event-busy" size={20} color={Colors.red[500]} />
-                  <Text style={styles.cancelReserveButtonText}>CANCELAR AGENDAMENTO</Text>
+            /* Botões da aba TREINO */
+            <View style={styles.trenoFooter}>
+              {appUser?.role === 'admin' && (
+                <TouchableOpacity
+                  style={styles.editWodButton}
+                  onPress={() => router.push({ pathname: '/wod-editor', params: { date: classData?.date } })}
+                >
+                  <Icon name="edit" size={18} color={Colors.primary} />
+                  <Text style={styles.editWodButtonText}>EDITAR WOD DO DIA</Text>
                 </TouchableOpacity>
-              ) : null
-            ) : (
-              <TouchableOpacity style={styles.reserveButton} onPress={handleReserve}>
-                <Icon name="event-available" size={20} color={Colors.backgroundDark} />
-                <Text style={styles.reserveButtonText}>RESERVAR AULA</Text>
-              </TouchableOpacity>
-            )
+              )}
+              {reserving ? (
+                <ActivityIndicator color={Colors.primary} />
+              ) : myReservationId ? (
+                classData && new Date() < getClassDateTime(classData.date, classData.time) ? (
+                  <TouchableOpacity style={styles.cancelReserveButton} onPress={handleCancelMyReservation}>
+                    <Icon name="event-busy" size={20} color={Colors.red[500]} />
+                    <Text style={styles.cancelReserveButtonText}>CANCELAR AGENDAMENTO</Text>
+                  </TouchableOpacity>
+                ) : null
+              ) : (
+                appUser?.role !== 'admin' && (
+                  <TouchableOpacity style={styles.reserveButton} onPress={handleReserve}>
+                    <Icon name="event-available" size={20} color={Colors.backgroundDark} />
+                    <Text style={styles.reserveButtonText}>RESERVAR AULA</Text>
+                  </TouchableOpacity>
+                )
+              )}
+            </View>
           ) : (
             /* Botões de admin — apenas na aba LISTA DE PRESENÇA */
             appUser?.role === 'admin' && (
@@ -724,6 +746,24 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.backgroundDark,
     borderTopWidth: 1,
     borderTopColor: Colors.cardDark,
+  },
+  trenoFooter: { gap: 10 },
+  editWodButton: {
+    height: 44,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: Colors.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: `${Colors.primary}14`,
+  },
+  editWodButtonText: {
+    color: Colors.primary,
+    fontFamily: Fonts.sansBold,
+    fontSize: 13,
+    letterSpacing: 0.5,
   },
   reserveButton: {
     height: 52,
