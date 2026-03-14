@@ -21,6 +21,7 @@ import {
   getClassesByDate,
   getReservationCount,
   getUserReservationForClass,
+  getWodByDate,
 } from '../../src/services';
 import { Class } from '../../src/types';
 import { Colors, Fonts } from '../../theme';
@@ -56,6 +57,7 @@ const ScheduleScreen: React.FC = () => {
   const [days] = useState<DayItem[]>(getWeekDays());
   const [selectedDate, setSelectedDate] = useState<string>(todayString);
   const [classes, setClasses] = useState<Class[]>([]);
+  const [wodExists, setWodExists] = useState(false);
   const [reservationCounts, setReservationCounts] = useState<Record<string, number>>({});
   const [userReservations, setUserReservations] = useState<Record<string, string>>({}); // classId → reservationId
   const [reservingClassId, setReservingClassId] = useState<string | null>(null);
@@ -66,8 +68,12 @@ const ScheduleScreen: React.FC = () => {
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
     try {
-      const fetched = await getClassesByDate(selectedDate);
+      const [fetched, wod] = await Promise.all([
+        getClassesByDate(selectedDate),
+        getWodByDate(selectedDate),
+      ]);
       setClasses(fetched);
+      setWodExists(!!wod && wod.sessions.length > 0);
 
       if (fetched.length > 0) {
         const [counts, reservations] = await Promise.all([
@@ -187,6 +193,20 @@ const ScheduleScreen: React.FC = () => {
         </ScrollView>
       </View>
 
+      {/* WOD do Dia — botão admin */}
+      {appUser?.role === 'admin' && (
+        <TouchableOpacity
+          style={[styles.wodBar, wodExists && styles.wodBarActive]}
+          onPress={() => router.push({ pathname: '/wod-editor', params: { date: selectedDate } })}
+        >
+          <Icon name="fitness-center" size={18} color={wodExists ? Colors.backgroundDark : Colors.primary} />
+          <Text style={[styles.wodBarText, wodExists && styles.wodBarTextActive]}>
+            {wodExists ? 'WOD do Dia definido — Editar' : 'Definir WOD do Dia'}
+          </Text>
+          <Icon name="chevron-right" size={20} color={wodExists ? Colors.backgroundDark : Colors.primary} />
+        </TouchableOpacity>
+      )}
+
       {loading ? (
         <ActivityIndicator color={Colors.primary} style={{ marginTop: 32 }} />
       ) : (
@@ -246,6 +266,31 @@ const styles = StyleSheet.create({
   dateTextActive: { color: Colors.backgroundDark },
   classesContainer: { paddingHorizontal: 24, paddingBottom: 100 },
   emptyText: { color: Colors.textMuted, fontSize: 14, textAlign: 'center', marginTop: 32 },
+  wodBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginHorizontal: 24,
+    marginBottom: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.primary,
+    backgroundColor: `${Colors.primary}14`,
+  },
+  wodBarActive: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
+  },
+  wodBarText: {
+    flex: 1,
+    color: Colors.primary,
+    fontFamily: Fonts.sansBold,
+    fontSize: 13,
+    letterSpacing: 0.3,
+  },
+  wodBarTextActive: { color: Colors.backgroundDark },
 });
 
 export default ScheduleScreen;

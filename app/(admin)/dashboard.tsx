@@ -107,7 +107,7 @@ const DashboardScreen: React.FC = () => {
         </View>
 
         <View style={styles.usersSection}>
-          <SectionHeader title="Lista de Usuários" onSeeAll={() => router.push('/(tabs)/members')} />
+          <SectionHeader title="Lista de Usuários" onSeeAll={() => router.push('/(admin)/members')} />
           {recentMembers.map((member) => (
             <ListItem
               key={member.id}

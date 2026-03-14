@@ -56,6 +56,13 @@ export interface Reservation {
 
 export type NewClassPayload = Omit<Class, 'id' | 'createdBy'>;
 
+export interface Wod {
+  id: string;   // = date string YYYY-MM-DD
+  date: string;
+  sessions: Session[];
+  createdBy: string;
+}
+
 export type PRUnit = 'kg' | 'reps' | 'min';
 
 export interface PR {
