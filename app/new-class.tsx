@@ -23,7 +23,7 @@ import Icon from '../components/Icon';
 import { useAuth } from '../src/context';
 import { createClass, getCoaches, updateClass } from '../src/services';
 import { db } from '../src/services/firebase';
-import { AppUser, Session } from '../src/types';
+import { AppUser } from '../src/types';
 import { Colors, Fonts } from '../theme';
 
 const PRESET_TIMES = ['06:00', '08:00', '09:00', '15:00', '18:00', '19:00', '20:00'];
@@ -57,73 +57,6 @@ const TypeButton: React.FC<{ title: string; isActive: boolean; onPress: () => vo
     <Text style={[styles.typeButtonText, isActive && styles.typeButtonTextActive]}>{title}</Text>
   </TouchableOpacity>
 );
-
-// ── Tab Button ─────────────────────────────────────────────────────────────────
-const TabButton: React.FC<{ title: string; isActive: boolean; onPress: () => void }> = ({ title, isActive, onPress }) => (
-  <TouchableOpacity onPress={onPress} style={[styles.tabButton, isActive && styles.tabButtonActive]}>
-    <Text style={[styles.tabButtonText, isActive && styles.tabButtonTextActive]}>{title}</Text>
-  </TouchableOpacity>
-);
-
-// ── Sessões ────────────────────────────────────────────────────────────────────
-interface SessoesProps {
-  sessions: Session[];
-  onUpdate: (sessions: Session[]) => void;
-}
-
-const Sessoes: React.FC<SessoesProps> = ({ sessions, onUpdate }) => {
-  const addSession = () => {
-    onUpdate([...sessions, { id: Date.now().toString(), title: 'Nova Sessão', details: '' }]);
-  };
-
-  const deleteSession = (id: string) => {
-    onUpdate(sessions.filter((s) => s.id !== id));
-  };
-
-  const updateTitle = (id: string, title: string) => {
-    onUpdate(sessions.map((s) => (s.id === id ? { ...s, title } : s)));
-  };
-
-  const updateDetails = (id: string, details: string) => {
-    onUpdate(sessions.map((s) => (s.id === id ? { ...s, details } : s)));
-  };
-
-  return (
-    <View style={styles.formContainer}>
-      {sessions.map((session) => (
-        <View key={session.id} style={styles.sessionCard}>
-          <View style={styles.sessionHeader}>
-            <View style={styles.sessionTitleContainer}>
-              <Icon name="drag-indicator" size={24} color={Colors.textMuted} />
-              <TextInput
-                style={styles.sessionTitleInput}
-                value={session.title}
-                onChangeText={(text) => updateTitle(session.id, text)}
-                placeholderTextColor={Colors.textMuted}
-                placeholder="Título da sessão"
-              />
-            </View>
-            <TouchableOpacity onPress={() => deleteSession(session.id)}>
-              <Icon name="delete" size={22} color={Colors.textMuted} />
-            </TouchableOpacity>
-          </View>
-          <TextInput
-            style={styles.sessionDetailsInput}
-            multiline
-            value={session.details}
-            onChangeText={(text) => updateDetails(session.id, text)}
-            placeholder="Descreva os exercícios..."
-            placeholderTextColor={Colors.textMuted}
-          />
-        </View>
-      ))}
-      <TouchableOpacity style={styles.addSessionButton} onPress={addSession}>
-        <Icon name="add-circle" size={22} color={Colors.primary} />
-        <Text style={styles.addSessionButtonText}>Adicionar Nova Sessão</Text>
-      </TouchableOpacity>
-    </View>
-  );
-};
 
 // ── Date Picker Modal ──────────────────────────────────────────────────────────
 const DatePickerModal: React.FC<{
@@ -230,17 +163,12 @@ const NewClassScreen: React.FC = () => {
   todayMidnight.setHours(0, 0, 0, 0);
 
   const [loadingClass, setLoadingClass] = useState(isEditing);
-  const [activeTab, setActiveTab] = useState<'dados' | 'sessoes'>('dados');
   const [classType, setClassType] = useState<typeof CLASS_TYPES[number]>(CLASS_TYPES[0]);
   const [date, setDate] = useState<Date>(todayMidnight);
   const [selectedTime, setSelectedTime] = useState('');
   const [coachName, setCoachName] = useState('');
   const [capacity, setCapacity] = useState('15');
   const [coaches, setCoaches] = useState<AppUser[]>([]);
-  const [sessions, setSessions] = useState<Session[]>([
-    { id: '1', title: 'Aquecimento', details: '' },
-    { id: '2', title: 'WOD', details: '' },
-  ]);
   const [saving, setSaving] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showCoachPicker, setShowCoachPicker] = useState(false);
@@ -260,7 +188,6 @@ const NewClassScreen: React.FC = () => {
           if (data.time) setSelectedTime(data.time);
           if (data.coach) setCoachName(data.coach);
           if (data.capacity) setCapacity(String(data.capacity));
-          if (data.sessions) setSessions(data.sessions as Session[]);
         }
       })
       .finally(() => setLoadingClass(false));
@@ -284,7 +211,6 @@ const NewClassScreen: React.FC = () => {
         date: dateToISO(date),
         time: selectedTime,
         capacity: parseInt(capacity) || 15,
-        sessions,
       };
       if (isEditing) {
         await updateClass(id, payload);
@@ -354,24 +280,9 @@ const NewClassScreen: React.FC = () => {
           nestedScrollEnabled
           showsVerticalScrollIndicator={false}
         >
-          {/* Tabs */}
-          <View style={styles.tabContainer}>
-            <TabButton
-              title="Dados Principais"
-              isActive={activeTab === 'dados'}
-              onPress={() => setActiveTab('dados')}
-            />
-            <TabButton
-              title="Sessões"
-              isActive={activeTab === 'sessoes'}
-              onPress={() => setActiveTab('sessoes')}
-            />
-          </View>
-
           {/* Content */}
           <View style={styles.content}>
-              {activeTab === 'dados' ? (
-                <>
+              <>
                   {/* Tipo de Aula */}
                   <View style={styles.section}>
                     <Text style={styles.label}>Tipo de Aula</Text>
@@ -444,11 +355,7 @@ const NewClassScreen: React.FC = () => {
                       />
                     </View>
                   </View>
-                </>
-              ) : (
-                <Sessoes sessions={sessions} onUpdate={setSessions} /> 
-                
-              )}
+              </>
 
               {/* Botões — dentro do scroll, abaixo do conteúdo */}
               <View style={styles.actions}>
@@ -504,18 +411,6 @@ const styles = StyleSheet.create({
   headerBack: { width: 40, alignItems: 'flex-start' },
   headerTitleWrapper: { flex: 1, alignItems: 'center' },
   headerTitle: { color: Colors.white, fontFamily: Fonts.sansBold, fontSize: 18 },
-  // Tabs
-  tabContainer: {
-    flexDirection: 'row',
-    paddingHorizontal: 24,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.cardDark,
-    gap: 32,
-  },
-  tabButton: { paddingVertical: 16, borderBottomWidth: 2, borderBottomColor: 'transparent' },
-  tabButtonActive: { borderBottomColor: Colors.primary },
-  tabButtonText: { color: Colors.textMuted, fontFamily: Fonts.sansMedium, fontSize: 14 },
-  tabButtonTextActive: { color: Colors.primary },
   // Form
   content: { padding: 24, gap: 0 },
   formContainer: { gap: 24, },
@@ -577,47 +472,6 @@ const styles = StyleSheet.create({
     height: 56,
   },
   input: { flex: 1, paddingHorizontal: 16, color: Colors.white, fontFamily: Fonts.sansMedium, height: '100%' },
-  // Sessões
-  sessionCard: {
-    backgroundColor: Colors.cardDark,
-    borderRadius: 12,
-    padding: 16,
-    borderLeftWidth: 4,
-    borderLeftColor: Colors.primary,
-  },
-  sessionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
-  sessionTitleContainer: { flexDirection: 'row', alignItems: 'center', flex: 1 },
-  sessionTitleInput: {
-    color: Colors.white,
-    fontSize: 18,
-    fontFamily: Fonts.sansBold,
-    flex: 1,
-    marginLeft: 8,
-    padding: 0,
-  },
-  sessionDetailsInput: {
-    backgroundColor: Colors.backgroundDark,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-    borderRadius: 8,
-    padding: 16,
-    minHeight: 100,
-    color: Colors.textMuted,
-    fontSize: 14,
-    textAlignVertical: 'top',
-  },
-  addSessionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 16,
-    borderWidth: 2,
-    borderStyle: 'dashed',
-    borderColor: Colors.primary,
-    borderRadius: 12,
-    marginTop: 16,
-  },
-  addSessionButtonText: { color: Colors.primary, fontFamily: Fonts.sansBold, marginLeft: 8 },
   // Botões de ação — dentro do scroll
   actions: {
     flexDirection: 'row',
