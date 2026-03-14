@@ -116,13 +116,15 @@ export const createUser = onCall(async (request) => {
     throw new HttpsError('permission-denied', 'Apenas administradores podem usar esta função.');
   }
 
-  const { name, email, role, password, planType, enrollmentActive } = request.data as {
+  const { name, email, role, password, planType, enrollmentActive, phone, birthDate } = request.data as {
     name: string;
     email: string;
     role: string;
     password: string;
     planType?: string;
     enrollmentActive?: boolean;
+    phone?: string;
+    birthDate?: string;
   };
 
   if (!name || !email || !role || !password) {
@@ -147,6 +149,8 @@ export const createUser = onCall(async (request) => {
     enrollmentActive: enrollmentActive ?? true,
     mustChangePassword: true,
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    ...(phone ? { phone } : {}),
+    ...(birthDate ? { birthDate } : {}),
   };
 
   if (planType && PLAN_DAYS[planType]) {
@@ -158,6 +162,28 @@ export const createUser = onCall(async (request) => {
   }
 
   await admin.firestore().doc(`users/${userRecord.uid}`).set(userData);
+});
+
+// ---------------------------------------------------------------------------
+// resetUserPassword — admin: redefine senha e força troca no próximo acesso
+// ---------------------------------------------------------------------------
+
+export const resetUserPassword = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Login necessário.');
+
+  const callerDoc = await admin.firestore().doc(`users/${request.auth.uid}`).get();
+  if (!callerDoc.exists || callerDoc.data()!.role !== 'admin') {
+    throw new HttpsError('permission-denied', 'Apenas administradores podem usar esta função.');
+  }
+
+  const { uid, newPassword } = request.data as { uid: string; newPassword: string };
+  if (!uid) throw new HttpsError('invalid-argument', 'uid é obrigatório.');
+  if (!newPassword || newPassword.length < 6) {
+    throw new HttpsError('invalid-argument', 'A senha deve ter no mínimo 6 caracteres.');
+  }
+
+  await admin.auth().updateUser(uid, { password: newPassword });
+  await admin.firestore().doc(`users/${uid}`).update({ mustChangePassword: true });
 });
 
 // ---------------------------------------------------------------------------

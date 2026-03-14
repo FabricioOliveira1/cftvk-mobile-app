@@ -71,6 +71,10 @@ const EditMemberScreen: React.FC = () => {
   const [removing, setRemoving] = useState(false);
   const [planModalVisible, setPlanModalVisible] = useState(false);
   const [tempPlanType, setTempPlanType] = useState<PlanType | null>(null);
+  const [resetModalVisible, setResetModalVisible] = useState(false);
+  const [resetPassword, setResetPassword] = useState('');
+  const [showResetPassword, setShowResetPassword] = useState(false);
+  const [resetting, setResetting] = useState(false);
 
   // Track originals to detect enrollment changes
   const origPlanType = useRef<PlanType | null>(null);
@@ -92,11 +96,15 @@ const EditMemberScreen: React.FC = () => {
         setRole(data.role ?? 'student');
         setPhone(data.phone ?? '');
         setBirthDate(data.birthDate ?? '');
-        const loadedPlanType = (data.planType ?? null) as PlanType | null;
+        let resolvedPlanType = (data.planType ?? null) as PlanType | null;
+        if (!resolvedPlanType && data.plan) {
+          const found = Object.entries(PLAN_CONFIG).find(([, cfg]) => cfg.label === data.plan);
+          if (found) resolvedPlanType = found[0] as PlanType;
+        }
         const loadedEnrollmentActive = data.enrollmentActive ?? true;
-        setPlanType(loadedPlanType);
+        setPlanType(resolvedPlanType);
         setEnrollmentActive(loadedEnrollmentActive);
-        origPlanType.current = loadedPlanType;
+        origPlanType.current = resolvedPlanType;
         origEnrollmentActive.current = loadedEnrollmentActive;
       }
     }).finally(() => setLoading(false));
@@ -144,7 +152,7 @@ const EditMemberScreen: React.FC = () => {
           });
         }
 
-        router.back();
+        router.replace('/(admin)/members');
       } catch {
         Alert.alert('Erro', 'Não foi possível salvar as alterações.');
       } finally {
@@ -163,8 +171,8 @@ const EditMemberScreen: React.FC = () => {
     }
     setSaving(true);
     try {
-      await createMember(name.trim(), email.trim(), role, password, planType ?? undefined, enrollmentActive);
-      router.back();
+      await createMember(name.trim(), email.trim(), role, password, planType ?? undefined, enrollmentActive, phone.trim() || undefined, birthDate.trim() || undefined);
+      router.replace('/(admin)/members');
     } catch (e: unknown) {
       const msg = e && typeof e === 'object' && 'code' in e
         ? (e as { code: string }).code === 'auth/email-already-in-use'
@@ -174,6 +182,25 @@ const EditMemberScreen: React.FC = () => {
       Alert.alert('Erro', msg);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleResetPassword = async () => {
+    if (!resetPassword || resetPassword.length < 6) {
+      Alert.alert('Senha inválida', 'A senha deve ter no mínimo 6 caracteres.');
+      return;
+    }
+    if (!id) return;
+    setResetting(true);
+    try {
+      await httpsCallable(functions, 'resetUserPassword')({ uid: id, newPassword: resetPassword });
+      setResetModalVisible(false);
+      setResetPassword('');
+      Alert.alert('Senha resetada', 'O aluno deverá redefinir a senha no próximo acesso.');
+    } catch {
+      Alert.alert('Erro', 'Não foi possível resetar a senha.');
+    } finally {
+      setResetting(false);
     }
   };
 
@@ -376,10 +403,16 @@ const EditMemberScreen: React.FC = () => {
         {/* Footer buttons */}
         <View style={styles.footer}>
           {isEditing && isAdmin && (
-            <TouchableOpacity style={styles.removeButton} onPress={handleRemove}>
-              <Icon name="delete" size={20} color={Colors.red[500]} />
-              <Text style={styles.removeButtonText}>Remover Aluno da Base</Text>
-            </TouchableOpacity>
+            <View style={styles.footerRow}>
+              <TouchableOpacity style={[styles.removeButton, styles.footerHalf]} onPress={handleRemove}>
+                <Icon name="delete" size={20} color={Colors.red[500]} />
+                <Text style={styles.removeButtonText}>Remover</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.resetButton, styles.footerHalf]} onPress={() => { setResetPassword(''); setResetModalVisible(true); }}>
+                <Icon name="lock-reset" size={20} color={Colors.primary} />
+                <Text style={styles.resetButtonText}>Resetar Senha</Text>
+              </TouchableOpacity>
+            </View>
           )}
           <TouchableOpacity style={styles.saveButton} onPress={handleSave} disabled={saving}>
             <Icon name="save" size={20} color={Colors.backgroundDark} />
@@ -417,6 +450,45 @@ const EditMemberScreen: React.FC = () => {
             </TouchableOpacity>
           </Pressable>
         </Pressable>
+      </Modal>
+
+      {/* Reset password modal */}
+      <Modal visible={resetModalVisible} transparent animationType="slide">
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.flex}>
+        <Pressable style={styles.modalOverlay} onPress={() => setResetModalVisible(false)}>
+          <Pressable style={styles.planModalBox}>
+            <Text style={styles.planModalTitle}>Resetar Senha</Text>
+            <Text style={styles.resetModalSubtitle}>
+              Defina uma senha temporária. O aluno será obrigado a redefinir no próximo acesso.
+            </Text>
+            <View style={styles.resetInputContainer}>
+              <TextInput
+                style={styles.resetInput}
+                value={resetPassword}
+                onChangeText={setResetPassword}
+                placeholder="Mínimo 6 caracteres"
+                placeholderTextColor={Colors.textMuted}
+                secureTextEntry={!showResetPassword}
+                autoCapitalize="none"
+              />
+              <TouchableOpacity onPress={() => setShowResetPassword((v) => !v)} style={styles.resetVisibility}>
+                <Icon name={showResetPassword ? 'visibility-off' : 'visibility'} size={20} color={Colors.textMuted} />
+              </TouchableOpacity>
+            </View>
+            <TouchableOpacity
+              style={[styles.planConfirmButton, (!resetPassword || resetPassword.length < 6 || resetting) && styles.planConfirmButtonDisabled]}
+              onPress={handleResetPassword}
+              disabled={!resetPassword || resetPassword.length < 6 || resetting}
+            >
+              {resetting ? (
+                <ActivityIndicator color={Colors.backgroundDark} />
+              ) : (
+                <Text style={styles.planConfirmButtonText}>CONFIRMAR RESET</Text>
+              )}
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Removing overlay */}
@@ -517,6 +589,8 @@ const styles = StyleSheet.create({
   chipText: { color: Colors.white, fontFamily: Fonts.sansMedium, fontSize: 13 },
   chipTextActive: { color: Colors.backgroundDark, fontFamily: Fonts.sansBold },
   footer: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 24, gap: 12, backgroundColor: Colors.backgroundDark, borderTopWidth: 1, borderTopColor: Colors.border },
+  footerRow: { flexDirection: 'row', gap: 12 },
+  footerHalf: { flex: 1 },
   removeButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -527,6 +601,38 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   removeButtonText: { color: Colors.red[500], fontFamily: Fonts.sansBold, fontSize: 14 },
+  resetButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    height: 48,
+    backgroundColor: Colors.cardDark,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.primary,
+  },
+  resetButtonText: { color: Colors.primary, fontFamily: Fonts.sansBold, fontSize: 14 },
+  resetModalSubtitle: {
+    color: Colors.textMuted,
+    fontFamily: Fonts.sans,
+    fontSize: 13,
+    lineHeight: 18,
+    marginBottom: 8,
+  },
+  resetInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.surfaceDark,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    height: 56,
+    paddingHorizontal: 16,
+    marginBottom: 12,
+  },
+  resetInput: { flex: 1, color: Colors.white, fontFamily: Fonts.sansMedium, fontSize: 15, padding: 0 },
+  resetVisibility: { padding: 4 },
   saveButton: {
     flexDirection: 'row',
     alignItems: 'center',
