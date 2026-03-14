@@ -1,5 +1,5 @@
 import { useFocusEffect, useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -304,22 +304,20 @@ const StudentDashboardScreen: React.FC = () => {
 
             {/* ── WOD do Dia ── */}
             {todayWod && (
-              <TouchableOpacity
-                style={styles.wodCard}
-                onPress={() => setWodModalVisible(true)}
-                activeOpacity={0.85}
-              >
+              <View style={styles.wodCard}>
                 <View style={styles.wodCardTop}>
                   <View style={styles.wodCardBadge}>
                     <Icon name="fitness-center" size={14} color={Colors.backgroundDark} />
                     <Text style={styles.wodCardBadgeText}>WOD DO DIA</Text>
                   </View>
-                  <Icon name="open-in-new" size={18} color={Colors.backgroundDark} style={{ opacity: 0.6 }} />
+                  <TouchableOpacity style={styles.wodVerBtn} onPress={() => setWodModalVisible(true)} activeOpacity={0.75}>
+                    <Text style={styles.wodVerBtnText}>Ver treino</Text>
+                  </TouchableOpacity>
                 </View>
-                <Text style={styles.wodCardSessions}>
-                  {todayWod.sessions.map((s) => s.title).join('  •  ')}
+                <Text style={styles.wodCardTitle}>
+                  {todayClasses[0]?.cls.title?.toUpperCase() ?? '—'}
                 </Text>
-              </TouchableOpacity>
+              </View>
             )}
 
             {/* ── Aulas de Hoje ── */}
@@ -586,11 +584,23 @@ const styles = StyleSheet.create({
     fontSize: 11,
     letterSpacing: 0.8,
   },
-  wodCardSessions: {
+  wodCardTitle: {
     color: Colors.backgroundDark,
-    fontFamily: Fonts.sansMedium,
-    fontSize: 14,
-    opacity: 0.85,
+    fontFamily: Fonts.sansBold,
+    fontSize: 28,
+    marginTop: 4,
+  },
+  wodVerBtn: {
+    backgroundColor: 'rgba(0,0,0,0.15)',
+    borderRadius: 99,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+  },
+  wodVerBtnText: {
+    color: Colors.backgroundDark,
+    fontFamily: Fonts.sansBold,
+    fontSize: 12,
+    letterSpacing: 0.3,
   },
 
   // WOD Modal
