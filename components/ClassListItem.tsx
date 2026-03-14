@@ -122,7 +122,7 @@ const ClassListItem: React.FC<ClassListItemProps> = ({
         <View>
           <Text style={styles.classTime}>{item.time}</Text>
           <View style={styles.classDetails}>
-            <Text style={styles.coachName}>Coach: {item.coach}</Text>
+            <Text style={styles.coachName}>{item.coach}</Text>
             <View style={styles.dot} />
             <Text style={[styles.spots, { color: item.color }]}>{item.spots}</Text>
           </View>
