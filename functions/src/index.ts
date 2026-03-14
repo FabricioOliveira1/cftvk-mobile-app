@@ -298,3 +298,425 @@ export const migrateReservations = onCall(async (request) => {
   if (migrated > 0) await batch.commit();
   return { migrated };
 });
+
+// ---------------------------------------------------------------------------
+// seedWorkoutData — admin: popula wods/ e classes/ a partir de agenda fixa
+// Idempotente: deleta e recria aulas/reservas dos dias afetados a cada execução
+// ---------------------------------------------------------------------------
+
+const COACH_SCHEDULE: Record<number, { time: string; coach: string }[]> = {
+  1: [ // Segunda — Thayan
+    { time: '06:00', coach: 'Thayan' }, { time: '08:00', coach: 'Thayan' },
+    { time: '09:00', coach: 'Thayan' }, { time: '15:00', coach: 'Thayan' },
+    { time: '18:00', coach: 'Thayan' }, { time: '19:00', coach: 'Thayan' },
+    { time: '20:00', coach: 'Thayan' },
+  ],
+  2: [ // Terça — Julio Souza + Caio Cezar
+    { time: '06:00', coach: 'Julio Souza' }, { time: '08:00', coach: 'Julio Souza' },
+    { time: '09:00', coach: 'Julio Souza' }, { time: '15:00', coach: 'Caio Cezar' },
+    { time: '18:00', coach: 'Julio Souza' }, { time: '19:00', coach: 'Julio Souza' },
+    { time: '20:00', coach: 'Julio Souza' },
+  ],
+  3: [ // Quarta — Everton + Caio Cezar + Tatiana
+    { time: '06:00', coach: 'Everton' }, { time: '08:00', coach: 'Everton' },
+    { time: '09:00', coach: 'Everton' }, { time: '15:00', coach: 'Caio Cezar' },
+    { time: '18:00', coach: 'Tatiana' }, { time: '19:00', coach: 'Tatiana' },
+    { time: '20:00', coach: 'Tatiana' },
+  ],
+  4: [ // Quinta — Julio Souza + Caio Cezar
+    { time: '06:00', coach: 'Julio Souza' }, { time: '08:00', coach: 'Julio Souza' },
+    { time: '09:00', coach: 'Julio Souza' }, { time: '15:00', coach: 'Caio Cezar' },
+    { time: '18:00', coach: 'Julio Souza' }, { time: '19:00', coach: 'Julio Souza' },
+    { time: '20:00', coach: 'Julio Souza' },
+  ],
+  5: [ // Sexta — Everton + Caio Cezar + Jansen
+    { time: '06:00', coach: 'Everton' }, { time: '08:00', coach: 'Everton' },
+    { time: '09:00', coach: 'Everton' }, { time: '15:00', coach: 'Caio Cezar' },
+    { time: '18:00', coach: 'Jansen' }, { time: '19:00', coach: 'Jansen' },
+    { time: '20:00', coach: 'Jansen' },
+  ],
+  6: [ // Sábado — Caio Cezar
+    { time: '09:00', coach: 'Caio Cezar' },
+  ],
+};
+
+interface WorkoutEntry {
+  date: string;
+  title: string;
+  sessions: { id: string; title: string; details: string }[];
+}
+
+const WORKOUT_DATA: WorkoutEntry[] = [
+  {
+    date: '2026-02-23', title: 'LPO',
+    sessions: [
+      { id: '1', title: 'Warm-up', details: `Mobility + Warm Up\n\n\n30'' Perna Aberta em Pé\n30'' Mão Em Cada Pé\n30'' PVC Pass\n\n\n2 Rounds Of\n5 Deadlifts\n5 Hang Cleans\n5 Shoulder Press\n10 Ring Row\n\n\nForça - Squat Snatch\n3x2 - 80%\n2x3 - 85%\n2x2 - 90%` },
+      { id: '2', title: 'Deadlift', details: `Passo a Passo Guiado\n\n\nPegada do clean, pegada do snatch, pegada sumo` },
+      { id: '3', title: "For Time 5'", details: `Rx\n\n\n3 Rounds Of\n100m Run\n8 Power Cleans (60/45)\n\n\nIntermediario\n\n\n3 Rounds Of\n100m Run\n8 Power Cleans (50/35)\n\n\nScaled\n\n\n3 Rounds Of\n100m Run\n8 Power Cleans` },
+    ],
+  },
+  {
+    date: '2026-02-24', title: 'GYM',
+    sessions: [
+      { id: '1', title: 'Warm-up', details: `Mobility + Warm Up\n\n\n30'' Agachado\n30'' Pesando\n30'' Deitado No Ombro\n\n\n10 Air Squats\n10 Lunges\n5 Burpees\n\n\nForça - Biceps\n\n\n4 Rounds Of\n12 Biceps Diretos\n20'' Iso Biceps` },
+      { id: '2', title: 'Rope Climb', details: `Passo a Passo Guiado Pelo Coach\n\n\nQuem já faz\n\n\nEmon 12'\n\n\n1- 3 Rope climb\n2- 10 Pull ups\n3- Rest` },
+      { id: '3', title: "Emom 12'", details: `Rx\n\n\n1 - 20 Wall Balls (20/14)\n2 - 20 Mb Lunges\n3 - 12 Burpees OT Ball\n\n\nIntermediario\n\n\n1 - 20 Wall Balls (16/12)\n2 - 20 Mb Lunges\n3 - 12 Burpees OT Ball\n\n\nScaled\n\n\n1 - 20 Wall Balls\n2 - 20 Mb Lunges\n3 - 12 Burpees OT Ball` },
+    ],
+  },
+  {
+    date: '2026-02-25', title: 'Metcon',
+    sessions: [
+      { id: '1', title: 'Warm-up', details: `Mobility + Warm Up\n\n\nAquecimento Especifico` },
+      { id: '2', title: 'Skill', details: `Não tem` },
+      { id: '3', title: "Amrap 30'", details: `Rx\n\n\n10 Deadlifts (60/45)\n12 BOTB\n30 D.U.\n10 Cleans\n12 BOTB\n30 D.U.\n10 Jerks\n12 BOTB\n30 D.U.\n\n\nIntermediario\n\n\n10 Deadlifts (50/35)\n12 BOTB\n30 D.U.\n10 Cleans\n12 BOTB\n30 D.U.\n10 Jerks\n12 BOTB\n30 D.U.\n\n\nScaled\n\n\n10 Deadlifts\n12 BOTB\n60 S.U.\n10 Cleans\n12 BOTB\n60 S.U.\n10 Jerks\n12 BOTB\n60 S.U.` },
+    ],
+  },
+  {
+    date: '2026-02-26', title: 'LPO',
+    sessions: [
+      { id: '1', title: 'Warm-up', details: `Mobility + Warm Up\n\n\n30'' Mão Na Parede\n30'' Sentado No Calcanhar\n15 Giros de Ombro Cada Lado\n\n\n10 Air Squats\n10 Push Ups\n30 Polichinelos\n\n\nForça - Split Jerk\n\n\n3x2 - 80%\n2x3 - 85%\n2x2 - 90%` },
+      { id: '2', title: 'Wall Ball', details: `Karen Tc 10'` },
+      { id: '3', title: "Amrap 12'", details: `RX\n\n\n50 D.U.\n10 Box Jumps\n10 HSPU\n\n\nScaled\n\n\n100 S.U.\n10 Box Jumps\n10 HSPU` },
+    ],
+  },
+  {
+    date: '2026-02-27', title: 'GYM',
+    sessions: [
+      { id: '1', title: 'Warm-up', details: `Mobility + Warm Up\n\n\n30'' Pé Na Parede\n30'' Puxando Pé Atras\n30'' Cotovelo Na Parede\n\n\n2 Rounds Of\n\n\n50m Run\n10 Sit Ups\n\n\nForça - Biceps\n\n\n4 Rounds Of\n6 Biceps Inversos\n4 Rope Pull No Esquadro` },
+      { id: '2', title: 'Rope Climb', details: `Passo a Passo Subida para quem fez 1 clip sozinho\n\n\nQuem já faz e quem não fez\n\n\nAmrap 12'\n\n\n50m Sprint\n1 Rope Climb / 3 tentativas de clip` },
+      { id: '3', title: "Emom 4'", details: `Categoria Única\n\n\n1 - 150m MB Run\n2 - 50 Escaladores` },
+    ],
+  },
+  {
+    date: '2026-02-28', title: '4º',
+    sessions: [
+      { id: '1', title: 'Warm-up', details: `Aquecimento` },
+      { id: '2', title: 'Skill', details: `-` },
+      { id: '3', title: 'Holbrook', details: `RX\n\n\n10 Rounds Of\n\n\n5 Thruster (50/35)\n10 Pull Ups\n100m Sprint\n1' Rest\n\n\nScaled\n\n\n10 Rounds Of\n\n\n5 Thruster (40/25)\n20 Ring Row\n100m Sprint\n1' Rest` },
+    ],
+  },
+  {
+    date: '2026-03-02', title: 'LPO',
+    sessions: [
+      { id: '1', title: 'Warm-up', details: `Mobility + Warm Up\n\n\n30'' Perna Aberta No Solo\n30'' Mão Em Cada Pé\n30'' Deitado No Ombro Invertido\n\n\n2 Rounds Of\n\n\n5 Deadlifts\n5 Hang Cleans\n5 Burpees\n\n\nForça - Power Clean\n2x3 - 85%\n2x2 - 90%\n4x1 - 95%` },
+      { id: '2', title: 'Hang Squat Clean', details: `Time Cap 10'\n\n\n21-15-9\nHang Power Clean\nHSPU` },
+      { id: '3', title: "Amrap 4'", details: `Max Burpee Box Jump Over` },
+    ],
+  },
+  {
+    date: '2026-03-03', title: 'Gym Day',
+    sessions: [
+      { id: '1', title: 'Warm-up', details: `Mobility + Warm Up\n\n\n30'' Agachado Em OH\n30'' Pesando\n30'' Pé Na Parede\n\n\n2 Rounds Of\n\n\n12 Air Squats\n20 Line Hops\n50m Run\n\n\nForça - Gluteo\n\n\n4 Rounds Of\n12/12 Bulgarian Squats\n12 Elevações Pelvicas` },
+      { id: '2', title: 'Pistol', details: `Dia 1 - SURRA DE MOBILIDADE, SÓ MOBILIDADE` },
+      { id: '3', title: "For Time 12'", details: `Rx\n\n\n3 Rounds Of\n\n\n8 Power Snatchs (50/35)\n40 Barbell Hops\n200m Run\n\n\nIntermediario\n\n\n3 Rounds Of\n\n\n8 Power Snatchs (40/30)\n40 Barbell Hops\n200m Run\n\n\nScaled\n\n\n3 Rounds Of\n\n\n8 Power Snatchs\n40 Barbell Hops\n200m Run` },
+    ],
+  },
+  {
+    date: '2026-03-04', title: 'Metcon',
+    sessions: [
+      { id: '1', title: 'Warm-up', details: `Mobility + Warm Up\n\n\nAquecimento Especifico` },
+      { id: '2', title: 'Skill', details: `Não Tem` },
+      { id: '3', title: "Emom 30'", details: `Rx\n\n\n1 - 10m OH Walking Lunge (22/16)\n2 - 20 Kb Swings\n3 - 10 HSPU\n4 - 12 Burpees\n5 - Rest\n\n\nIntermediario\n\n\n1 - 10m OH Walking Lunge (20/14)\n2 - 20 Kb Swings\n3 - 10 HSPU\n4 - 12 Burpees\n5 - Rest\n\n\nScaled\n\n\n1 - 10m OH Walking Lunge (18/12)\n2 - 20 Kb Swings\n3 - 10 HSPU\n4 - 12 Burpees\n5 - Rest` },
+    ],
+  },
+  {
+    date: '2026-03-05', title: 'LPO',
+    sessions: [
+      { id: '1', title: 'Warm-up', details: `Mobility + Warm Up\n\n\n30'' PVC Pass\n30'' OH Hold\n30'' Mão Na Parede\n\n\n5 Hang Snatch\n5 OHS\n20 Sit Ups\n\n\nForça - Power Snatch\n\n\n2x3 - 85%\n2x2 - 90%\n4x1 - 95%` },
+      { id: '2', title: 'Front Squat', details: `Emon 9'\n\n\n1- 9 Deadlifts\n2- 5 Hang Clean\n3- 3 Front Squat` },
+      { id: '3', title: "Emom 12'", details: `Rx\n\n\n1 - 15 T2B\n2 - 6 Squat Snatchs (60/35)\n3 - Rest\n\n\nIntermediario\n\n\n1 - 15 Knees to Elbow\n2 - 6 Squat Snatchs (50/30)\n3 - Rest\n\n\nScaled\n\n\n1 - 15 Knees High\n2 - 6 Squat Snatchs\n3 - Rest` },
+    ],
+  },
+  {
+    date: '2026-03-06', title: 'Gym',
+    sessions: [
+      { id: '1', title: 'Warm-up', details: `Mobility + Warm Up\n\n\n30'' Agachado\n30'' Pesando\n30'' Sentado No Calcanhar\n30'' Gluteo No Solo\n\n\n2 Rounds Of\n\n\n10 Air Squats\n10 Lunges\n\n\nForça - Quadriceps\n\n\n4 Rounds Of\n\n\n12 Passadas Pra Trás\n20 Goblet Squats` },
+      { id: '2', title: 'Pistol', details: `Passo a Passo, Desenvolvendo o Pistol.\n\n\nTODOS NA PRÁTICA` },
+      { id: '3', title: "Emom 6'", details: `Categoria Única\n\n\n1 - 30'' Chair Hold + 10 Jumping Squats` },
+    ],
+  },
+  {
+    date: '2026-03-07', title: 'Interativo',
+    sessions: [
+      { id: '1', title: 'Warm-up', details: `Aquecimento` },
+      { id: '2', title: 'Skill', details: `-` },
+      { id: '3', title: 'WOD', details: `Interativo` },
+    ],
+  },
+  {
+    date: '2026-03-09', title: 'LPO',
+    sessions: [
+      { id: '1', title: 'Mobility + Warm-up', details: `Mobility + Warm Up\n\n\n30'' Agachado\n30'' Pesando\n30'' Mão No Solo A Frente\n15 Giros de Ombro Cada Lado\n\n\n2 Rounds Of\n\n\n5 Hang Snatchs\n5 Front Squats\n5 Shoulder Press\n5 Burpees\n\n\nPotência - Squat Clean\n\n\n2x3 - 85%\n2x2 - 90%\n4x1 - 95%` },
+      { id: '2', title: 'Hang Power Snatch', details: `Passo a passo` },
+      { id: '3', title: "Amrap 10'", details: `Rx\n\n\n3 Thruster ( 50/35 )\n3 BOTB\n\n\nIntermediario\n\n\n3 Thruster ( 40/30 )\n3 BOTB\n\n\nScaled\n\n\n3 Thruster\n3 BOTB` },
+    ],
+  },
+  {
+    date: '2026-03-10', title: 'GYM',
+    sessions: [
+      { id: '1', title: 'Mobility + Warm-up', details: `Mobility + Warm Up\n\n\n30'' Mão Na Parede\n30'' Deitado No Ombro\n30'' Deitado No Ombro Invertido\n\n\n10 Push Ups\n15 Bom Dias Sem Carga\n20 Lunges\n\n\nPotência - Salto Vertical\n\n\n4 Rounds Of\n\n\n1' MB March\n10 Saltos Com Joelho No Peito` },
+      { id: '2', title: 'Box Jump Over', details: `Amrap 12'\n\n\n10 Box jump over\n12 Agachamentos com salto\n100m Run` },
+      { id: '3', title: "Emom 12'", details: `Rx\n\n\n1 - 8 Double Kb Swings (22/16)\n2 - 12 Suitcase Lunges\n3 - Rest\n\n\nScaled\n\n\n1 - 8 Double Kb Swings (20/14)\n2 - 12 Suitcase Lunges\n3 - Rest` },
+    ],
+  },
+  {
+    date: '2026-03-11', title: 'Metcon',
+    sessions: [
+      { id: '1', title: 'Warm-up', details: `Liberação Miofascial + Aquecimento Especifico` },
+      { id: '2', title: 'Skill', details: `Não Tem` },
+      { id: '3', title: "Amrap 30'", details: `Duplas 1 faz e 1 descansa\n\n\nRx\n\n\n200 D.U.\n50 Front Squats (70/50)\n50 V-Ups\n30 Burpees\n\n\nScaled\n\n\n200 S.U.\n50 Front Squats\n50 V-Ups\n30 Burpees` },
+    ],
+  },
+  {
+    date: '2026-03-12', title: 'LPO',
+    sessions: [
+      { id: '1', title: 'Mobility + Warm-up', details: `Mobility + Warm Up\n\n\n30'' PVC Pass\n30'' PVC Pass Lateral\n30'' Pé Na Parede\n30'' Puxando Pé Atras\n\n\n5 Shoulder Press\n10 Air Squats\n10 Push Ups\n100m Run\n\n\nPotência - Squat Snatch\n2x3 - 85%\n2x2 - 90%\n4x1 - 95%` },
+      { id: '2', title: 'Split Jerk', details: `Passo a passo` },
+      { id: '3', title: "For Time 12'", details: `Categoria Única\n\n\n3 Rounds Of\n600m Run\n10 Push Ups\n20 Air Squats` },
+    ],
+  },
+  {
+    date: '2026-03-13', title: 'Gym',
+    sessions: [
+      { id: '1', title: 'Mobility + Warm-up', details: `Mobility + Warm Up\n\n\n30'' Deitado No Ombro\n30'' Deitado No Ombro Invertido\n30'' Mão Na Parede\n\n\n2 Rounds Of\n\n\n10 Cachorros Mancos\n30 Polichinelos\n20 Escaladores\n5 Burpees\n\n\nForça - Panturrilha\n\n\n12 Flexões plantar\n20m Bailarina Walking` },
+      { id: '2', title: 'Box Jump', details: `Emon 8'\n\n\n1- 20 Box Jump\n2- 100 S.U` },
+      { id: '3', title: "Emom 8'", details: `1 - 50 D.U.\n2 - 50 Escaladores\n3 - 10 Burpees Abroad 1.5m` },
+    ],
+  },
+  {
+    date: '2026-03-14', title: 'Hero',
+    sessions: [
+      { id: '1', title: 'Warm-up', details: `Aquecimento` },
+      { id: '2', title: 'Skill', details: `-` },
+      { id: '3', title: 'WOD', details: `Kerrie\n\n\n10 round por tempo de:\n\n\n100-m sprint\n5 burpees\n20 sit-ups\n15 push-ups\n100-m sprint\n\n\nRest 2 minutos` },
+    ],
+  },
+  {
+    date: '2026-03-16', title: 'LPO',
+    sessions: [
+      { id: '1', title: 'Warm-up', details: `Mobility + Warm Up\n\n\n30'' Agachado\n30'' Pesando\n30'' Perna Aberta No Solo\n30'' Mão Em Cada Pé\n\n\n2 Rounds Of\n5 Deadlifts\n5 Hang Cleans\n5 Front Squats\n5 Shoulder Press\n\n\nPotência - Split Jerk\n2x3- 85%\n2x2- 90%\n4x1- 95%` },
+      { id: '2', title: 'Squat Clean', details: `Amrap 10'\n\n\n200m Run\nMax Squat Cleans (80%)` },
+      { id: '3', title: "For Time 4' - Fran", details: `Rx\n\n\n21-15-9\nThruster (43/30)\nPull Up\n\n\nIntermediario\n\n\n21-15-9\nThruster (35/25)\nJumping Pull Up\n\n\nScaled\n\n\n21-15-9\nThruster\nRing Row` },
+    ],
+  },
+  {
+    date: '2026-03-17', title: 'Gym',
+    sessions: [
+      { id: '1', title: 'Warm-up', details: `Mobility + Warm Up\n\n\n30'' Perna Aberta de Pé\n30'' Mão Em Cada Pé\n30'' Bom Dia Sem Carga\n\n\n3 Wall Walks\n5 Deadlifts\n20 Lunges\n20 Sit Ups\n\n\nFortalecimento de Ombro\n4 Rounds Of\n6 Shoulder Press\n6 Around The World Plate` },
+      { id: '2', title: 'Handstand Walk', details: `Dia 1 - Passo a Passo, Defesa e Virada Solo` },
+      { id: '3', title: "Emom 15'", details: `Rx\n\n\n1 - 12 T2B\n2 - 7 Deadlifts (100/70)\n3 - 20 Jumping Lunges\n\n\nIntermediario\n\n\n1 - 12 Knees to Elbow\n2 - 7 Deadlifts (80/50)\n3 - 20 Jumping Lunges\n\n\nScaled\n\n\n1 - 12 Knees High\n2 - 7 Deadlifts\n3 - 20 Jumping Lunges` },
+    ],
+  },
+  {
+    date: '2026-03-18', title: 'Metcon',
+    sessions: [
+      { id: '1', title: 'Warm-up', details: `Aquecimento Especifico` },
+      { id: '2', title: 'Skill', details: `Não Tem` },
+      { id: '3', title: "For Time 30'", details: `Rx\n\n\n30 Power Cleans (50/35)\n30 Burpees\n30 Front Squats\n30 Burpees\n30 Pull Ups\n30 Burpees\n30 D.U.\n30 Burpees\n30 HSPU\n30 Burpees\n\n\nIntermediario\n\n\n30 Power Cleans (40/25)\n30 Burpees\n30 Front Squats\n30 Burpees\n30 Jumping Pull Ups\n30 Burpees\n60 S.U.\n30 Burpees\n30 HSPU com anilha\n30 Burpee\n\n\nScaled\n\n\n30 Power Cleans (40/25)\n30 Burpees\n30 Front Squats\n30 Burpees\n30 Ring Row\n30 Burpees\n60 S.U.\n30 Burpees\n30 Push ups\n30 Burpee` },
+    ],
+  },
+  {
+    date: '2026-03-19', title: 'LPO',
+    sessions: [
+      { id: '1', title: 'Warm-up', details: `Mobility + Warm Up\n\n\n30'' PVC Pass\n30'' Agachado Em OH\n30'' Mão Na Parede\n\n\n5 Hang Snatchs\n5 OHS\n10 Burpees\n\n\nPotência - Power Clean - TC 15'\n\n\nPR` },
+      { id: '2', title: 'Split Jerk', details: `Emon 9'\n\n\n1- 5 Shoulder Press\n2- 5 Push Press\n3-  Split Jerk` },
+      { id: '3', title: "For Time 12'", details: `Rx\n\n\n12-11-10-9-8-7-6-5-4-3-2-1\n\n\nBurpee Box Jump Over\nKb Snatch (22/16)\nKb OHS\n\n\nScaled\n\n\n12-11-10-9-8-7-6-5-4-3-2-1\n\n\nBurpee Step up  Over\nKb Snatch (20/14)\nKb OHS` },
+    ],
+  },
+  {
+    date: '2026-03-20', title: 'Gym',
+    sessions: [
+      { id: '1', title: 'Warm-up', details: `Mobility + Warm Up\n\n\n30'' Mão Na Parede\n30'' Pé Na Parede\n30'' Puxando Pé Atras\n\n\n2 Rounds Of\n\n\n3 Wall Walks\n10 Saltos Com Joelho No Peito\n20 Sit Ups\n\n\nCore\n4 Rounds Of\n1' Hollow Position\n15 Hollow Rocks` },
+      { id: '2', title: 'Handstand Walk', details: `Dia 2 - Passo a Passo Avançado Pra Quem Já Vira Sozinho\n\n\nOu\n\n\nRx/ Condicionamento\n\n\nEmom 12'\n1 - 10m HSW / 100m Sprint\n2 - 15 Back Extension\n3 - Rest` },
+      { id: '3', title: "Emom 4'", details: `RX\n\n\n1 - 20 Box Jumps\n2 - 15 T2B\n\n\nScaled\n\n\n1 - 20 Step up\n2 - 15 Knees high` },
+    ],
+  },
+  {
+    date: '2026-03-21', title: 'Interativo',
+    sessions: [
+      { id: '1', title: 'Warm-up', details: `Aquecimento` },
+      { id: '2', title: 'Skill', details: `-` },
+      { id: '3', title: 'WOD', details: `Interativo` },
+    ],
+  },
+  {
+    date: '2026-03-23', title: 'LPO',
+    sessions: [
+      { id: '1', title: 'Warm-up', details: `Mobility + Warm Up\n\n\n30'' Perna Aberta No Solo\n30'' Mão Em Cada Pé\n30'' Mão No Solo\n\n\n2 Rounds Of\n5 Hang Snatchs\n5 OHS\n30 Polichinelos\n\n\nForça - Power Snatch - Tc 15'\n\n\nPR` },
+      { id: '2', title: 'Sumo Deadlift High Pull', details: `Passo a Passo sem peso e com peso baixo` },
+      { id: '3', title: "Amrap 8'", details: `Rx\n1-2-3-4-5-6-7-8-9-...\nSDHP (60/45)\n10x D.U\n\n\nScaled\n1-2-3-4-5-6-7-8-9-...\nSDHP (50/35)\n10x S.U` },
+    ],
+  },
+  {
+    date: '2026-03-24', title: 'GYM',
+    sessions: [
+      { id: '1', title: 'Warm-up', details: `Mobility + Warm Up\n\n\n30'' Agachado\n30'' Pesando Com Kb\n12 Toques No Pé Sentado\n\n\n20 Sit Ups\n20 Lunges\n\n\nCore\n4 Rounds Of\n12 V-Ups Alt + Sim\n12 Ciclying Abs` },
+      { id: '2', title: 'T2B', details: `For Time 10'\n\n\n5 Rounds Of\n10 T2B\n4 Wall Walks` },
+      { id: '3', title: "Emom 12'", details: `Rx\n\n\n1 - 12 Kb Step Ups (22/16)\n2 - 12 Suitcase Reverse Lunge (R-Arm)\n3 - 12 Suitcase Reverse Lunge (L-Arm)` },
+    ],
+  },
+  {
+    date: '2026-03-25', title: 'Metcon',
+    sessions: [
+      { id: '1', title: 'Warm-up', details: `Aquecimento Especifico` },
+      { id: '2', title: 'Skill', details: `Não Tem` },
+      { id: '3', title: "Amrap 30'", details: `Rx\n\n\n100m Buddy Carry\n30 Front Squats (60/45)\n20 BOTB Sync\n30 Deadlifts\n20 Push Ups Sync\n30 Push Jerks\n30 Air Squats Sync\n\n\nScaled\n\n\n100m MB Run\n30 Front Squats (50/35)\n20 BOTB Sync\n30 Deadlifts\n20 Push Ups Sync\n30 Push Jerks\n30 Air Squats Sync` },
+    ],
+  },
+  {
+    date: '2026-03-26', title: 'LPO',
+    sessions: [
+      { id: '1', title: 'Warm-up', details: `Mobility + Warm Up\n\n\n30'' Perna Aberta\n30'' Mão Em Cada Pé\n30'' PVC Pass\n\n\n5 Deadlifts\n5 Hang Clean\n5 Shoulder Press\n3 Wall Walks\n\n\nPotência - Squat Clean - TC 15'\n\n\nPR` },
+      { id: '2', title: 'Squat Clean', details: `Passo a Passo` },
+      { id: '3', title: "For Time 15'", details: `Rx\n\n\n5 Rounds Of\n12 Kb Clean And Jerks (22/16)\n10m HSW\n12 Wall Balls (20/14)\n\n\nIntermediario\n\n\n5 Rounds Of\n12 Kb Clean And Jerks (20/14)\n10m HSW\n12 Wall Balls (16/12)\n\n\nScaled\n\n\n5 Rounds Of\n12 Kb Clean And Jerks\n6  Wall Walk\n12 Wall Balls` },
+    ],
+  },
+  {
+    date: '2026-03-27', title: 'GYM',
+    sessions: [
+      { id: '1', title: 'Warm-up', details: `Mobility + Warm Up\n\n\n30'' Agachado\n30'' Pesando\n30'' Punho No Solo\n30'' PVC Pass\n\n\n2 Rounds Of\n5 Front Squats\n10 Ring Row\n10 Saltos Com Joelho No Peito\n\n\nFortalecimento de Ombro\n4 Rounds Of\n20 Toques No Ombro Em Prancha\n12 Tiger Bend` },
+      { id: '2', title: 'Rope Climb', details: `Amrap 10'\n20 Escaladores\n30 Polichinelos\n1 Rope Climb` },
+      { id: '3', title: "Emom 6'", details: `Rx\n\n\n1 - 6 Thrusters (50/35)\n2 - 10 Pull Ups\n3 - 15 Box Jumps\n4 - Rest\n\n\nIntermediario\n\n\n1 - 6 Thrusters (40/30)\n2 - 10 Jumping Pull Ups\n3 - 15 Box Jumps\n4 - Rest\n\n\nScaled\n\n\n1 - 6 Thrusters\n2 - 10 Ring Row\n3 - 15 Step ups\n4 - Rest` },
+    ],
+  },
+  {
+    date: '2026-03-28', title: 'Hero',
+    sessions: [
+      { id: '1', title: 'Warm-up', details: `Aquecimento` },
+      { id: '2', title: 'Skill', details: `-` },
+      { id: '3', title: 'Jag 28', details: `For Time 30'\n\n\n800m Run\n28 Kb Swings (32/22)\n28 Strict Pull Ups\n28 Double Kb Clean And Jerk\n28 Strict Pull Ups\n800m Run` },
+    ],
+  },
+  {
+    date: '2026-03-30', title: 'LPO',
+    sessions: [
+      { id: '1', title: 'Warm-up', details: `Mobility + Warm Up\n\n\n30" Elevando Cotovelo na Barra\n30" Empurrando Perna do Colega deitado\n30" Empurrando Sit Up Deitado\n\n\n2 Rounds of\n\n\n5 Hang Clean\n5 Front Squats\n5 Shoulder Press\n100m Run\n\n\nForça - Squat Snatch - TC 15'\n\n\nPR` },
+      { id: '2', title: 'Hang Squat Clean', details: `Time Cap 6'\n\n\npra maior carga do complex\n\n\n1 hang squat Clean\n1 Front squat\n1 hang squat clean` },
+      { id: '3', title: "Emom 9'", details: `RX\n\n\n1 - 6 Clean and Jerks (70/50)\n2 - 12 Burpees Over the Bar\n3 - 150m Sprint\n\n\nScaled\n\n\n1 - 6 Clean and Jerks (60/40)\n2 - 12 Burpees Over the Bar\n3 - 150m Sprint` },
+    ],
+  },
+  {
+    date: '2026-03-31', title: 'GYM',
+    sessions: [
+      { id: '1', title: 'Warm-up', details: `Mobility + Warm Up\n\n\n30" Mão Na Parede\n30" Puxando PVC do Colega\n15 Giros de Ombro cada Direção\n\n\n10 Agachamentos Com Salto\n10 Ring Row\n1' Front Plank\n\n\nPotência - Salto\n\n\n4 Rounds of\n12 Sitted Box Jump\n12 Drop to Jump` },
+      { id: '2', title: 'Bar Muscle Up', details: `Dia 1 - Passo a Passo guiado até BMU da caixa` },
+      { id: '3', title: "Amrap 12'", details: `RX\n\n\n20 V-Ups Alternados\n12 Double Kb Push Press (22/16)\n12 HSPU\n\n\nIntermediário\n\n\n20 V-Ups Alternados\n12 Double Kb Push Press (20/14)\n12 HSPU com anilha\n\n\nScaled\n\n\n20 V-Ups Alternados\n12 Double Kb Push Press\n12 Push Up` },
+    ],
+  },
+  {
+    date: '2026-04-01', title: 'Meticon',
+    sessions: [
+      { id: '1', title: 'Warm-up', details: `Liberação Miofascial + Aquecimento Especifico` },
+      { id: '2', title: 'Skill', details: `Não tem` },
+      { id: '3', title: "Emom 30'", details: `RX\n\n\nA cada 9' Por 30'\n\n\n600m Run\n12 Push Jerks (60/40)\n12 Burpees Over The Bar\n12 Box Jump Overs\n100m Farm Walk (40/24)\n12 Russian Kb Swings\n\n\nRest 1' Entre` },
+    ],
+  },
+  {
+    date: '2026-04-02', title: 'LPO',
+    sessions: [
+      { id: '1', title: 'Warm-up', details: `Mobility + Warm Up\n30" PVC Pass\n30" Mão No Solo a Frente\n12 Toques de Ombro no Solo\n\n\n5 Hang Clean\n30 Polichinelos\n10 Ring Row\n\n\nForça - Split Jerk - TC. 15'\n\n\nPR` },
+      { id: '2', title: 'Hang Power Clean', details: `For Time 8'\n\n\n50 Hang Power Clean\nEach break 12 Encolhimentos de Ombro KB` },
+      { id: '3', title: "For Time 11'", details: `RX\n\n\n100 D.U.\n10 Pull Ups\n80 D.U.\n15 Pull Ups\n60 D.U.\n20 Pull Ups\n40 D.U.\n25 Pull Ups\n20 D.U.\n30 Pull Ups\n\n\nScaled\n\n\n200 S.U.\n20 Ring Row\n160 S.U.\n30 Ring Row\n120 S.U.\n20 Ring Row\n80 S.U.\n25 Ring Row\n20 S.U.\n30 Ring Row` },
+    ],
+  },
+  {
+    date: '2026-04-03', title: 'GYM',
+    sessions: [
+      { id: '1', title: 'Warm-up', details: `Mobility + Warm Up\n\n\n30" Mão Na Parede\n30" PVC Pass Lateral\n30" Deitado no Ombro\n30" Deitado no Ombro Invertido\n\n\n2 Rounds Of\n\n\n10 Ring Row\n10 Air Squats\n5 Burpees\n\n\nPotência BMU\n\n\n4 Rounds\n\n\n4 Entradas da Caixa\n4 Toques de Quadril na Barra` },
+      { id: '2', title: 'BMU', details: `Dia 2 - Passo a Passo Avancado pra quem entrou da caixa solo\n\n\nOu\n\n\nRx/ Condicionamento\nEmom 12'\n\n\n1 - 3 BMU/ 3 Tentativas da Caixa\n2 - 12 Burpees To Target\n3 - Rest` },
+      { id: '3', title: "Amrap 5'", details: `Categoria Única\n\n\nMax Air Squat Unbk\nEach Break 10 Burpees` },
+    ],
+  },
+];
+
+export const seedWorkoutData = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Login necessário.');
+
+  const callerDoc = await admin.firestore().doc(`users/${request.auth.uid}`).get();
+  if (!callerDoc.exists || callerDoc.data()!.role !== 'admin') {
+    throw new HttpsError('permission-denied', 'Apenas administradores podem usar esta função.');
+  }
+
+  const db = admin.firestore();
+  let wodsCreated = 0;
+  let classesCreated = 0;
+
+  for (const entry of WORKOUT_DATA) {
+    const { date, title, sessions } = entry;
+    const dayOfWeek = new Date(date + 'T12:00:00Z').getUTCDay();
+    const slots = COACH_SCHEDULE[dayOfWeek] ?? [];
+
+    // Deletar classes existentes + reservas (cascade)
+    const classSnap = await db.collection('classes').where('date', '==', date).get();
+    if (!classSnap.empty) {
+      const batch = db.batch();
+      for (const classDoc of classSnap.docs) {
+        const resSnap = await db.collection('reservations').where('classId', '==', classDoc.id).get();
+        resSnap.docs.forEach((r) => batch.delete(r.ref));
+        batch.delete(classDoc.ref);
+      }
+      await batch.commit();
+    }
+
+    // Criar WOD
+    await db.doc(`wods/${date}`).set({
+      date,
+      sessions,
+      createdBy: request.auth.uid,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    wodsCreated++;
+
+    // Criar classes
+    if (slots.length > 0) {
+      const classBatch = db.batch();
+      for (const slot of slots) {
+        const ref = db.collection('classes').doc();
+        classBatch.set(ref, {
+          title,
+          coach: slot.coach,
+          date,
+          time: slot.time,
+          capacity: 20,
+          createdBy: request.auth.uid,
+        });
+        classesCreated++;
+      }
+      await classBatch.commit();
+    }
+  }
+
+  return { datesProcessed: WORKOUT_DATA.length, wodsCreated, classesCreated };
+});
+
+// ---------------------------------------------------------------------------
+// fixClassCapacity — admin: atualiza capacity de todas as aulas para 15
+// Executar UMA vez após ajuste do valor padrão
+// ---------------------------------------------------------------------------
+
+export const fixClassCapacity = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Login necessário.');
+
+  const callerDoc = await admin.firestore().doc(`users/${request.auth.uid}`).get();
+  if (!callerDoc.exists || callerDoc.data()!.role !== 'admin') {
+    throw new HttpsError('permission-denied', 'Apenas administradores podem usar esta função.');
+  }
+
+  const db = admin.firestore();
+  const snap = await db.collection('classes').get();
+  if (snap.empty) return { updated: 0 };
+
+  const CHUNK = 400;
+  let updated = 0;
+
+  for (let i = 0; i < snap.docs.length; i += CHUNK) {
+    const batch = db.batch();
+    snap.docs.slice(i, i + CHUNK).forEach((d) => {
+      batch.update(d.ref, { capacity: 15 });
+      updated++;
+    });
+    await batch.commit();
+  }
+
+  return { updated };
+});
