@@ -51,6 +51,18 @@ ui-debug.log
 functions/.env
 functions/.env.local
 functions/.runtimeconfig.json
+functions/migrate-nextfit.js
+
+
+functions/*.js
+
+
+functions/*.json
+*.json
+
+
+.env
+*.env
 
 /CFTVK_Documento_Base.md
 /IA_CONTEXT.md
