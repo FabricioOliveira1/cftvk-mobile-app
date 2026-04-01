@@ -1,6 +1,7 @@
 import { Tabs } from 'expo-router';
 import React from 'react';
 import { StyleSheet } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from '../../components/Icon';
 import { Colors } from '../../theme';
 
@@ -9,6 +10,8 @@ const TabBarIcon = ({ name, color }: { name: React.ComponentProps<typeof Icon>['
 );
 
 export default function StudentTabLayout() {
+  const { bottom } = useSafeAreaInsets();
+
   return (
     <Tabs
       screenOptions={{
@@ -18,8 +21,8 @@ export default function StudentTabLayout() {
         tabBarStyle: {
           backgroundColor: Colors.backgroundDark,
           borderTopColor: Colors.border,
-          height: 85,
-          paddingBottom: 25,
+          height: 60 + bottom,
+          paddingBottom: Math.max(bottom, 8),
         },
         tabBarLabelStyle: styles.tabLabel,
       }}

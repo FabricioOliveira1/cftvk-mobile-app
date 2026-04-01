@@ -2,6 +2,7 @@
 import { Tabs, useRouter } from 'expo-router';
 import React, { useEffect } from 'react';
 import { StyleSheet } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from '../../components/Icon';
 import { useAuth } from '../../src/context';
 import { Colors } from '../../theme';
@@ -13,6 +14,7 @@ const TabBarIcon = ({ name, color }: { name: React.ComponentProps<typeof Icon>['
 export default function TabLayout() {
   const { appUser, loading } = useAuth();
   const router = useRouter();
+  const { bottom } = useSafeAreaInsets();
 
   useEffect(() => {
     if (!loading && appUser && appUser.role !== 'admin') {
@@ -29,8 +31,8 @@ export default function TabLayout() {
         tabBarStyle: {
           backgroundColor: Colors.backgroundDark,
           borderTopColor: Colors.border,
-          height: 85,
-          paddingBottom: 25,
+          height: 60 + bottom,
+          paddingBottom: Math.max(bottom, 8),
         },
         tabBarLabelStyle: styles.tabLabel,
       }}
