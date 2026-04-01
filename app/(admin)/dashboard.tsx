@@ -57,7 +57,7 @@ const DashboardScreen: React.FC = () => {
         }
       };
       load();
-    }, [appUser?.id])
+    }, [appUser])
   );
 
   return (

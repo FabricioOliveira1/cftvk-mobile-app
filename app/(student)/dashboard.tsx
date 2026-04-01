@@ -170,7 +170,7 @@ const StudentDashboardScreen: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [appUser?.id]);
+  }, [appUser]);
 
   useFocusEffect(useCallback(() => { loadData(); }, [loadData]));
 

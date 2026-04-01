@@ -1,6 +1,6 @@
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { doc, getDoc } from 'firebase/firestore';
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -141,7 +141,7 @@ const ClassDetailScreen: React.FC = () => {
   const [myReservationId, setMyReservationId] = useState<string | null>(null);
   const [reserving, setReserving] = useState(false);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     if (!id) return;
     setLoading(true);
     try {
@@ -180,11 +180,11 @@ const ClassDetailScreen: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [id, appUser]);
 
   useEffect(() => {
     loadData();
-  }, [id]);
+  }, [loadData]);
 
   const handleReserve = async () => {
     if (!appUser || !id || !classData) return;

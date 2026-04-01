@@ -32,7 +32,6 @@ const PRESET_TIMES = ['06:00', '08:00', '09:00', '15:00', '18:00', '19:00', '20:
 const CLASS_TYPES = ['Crossfit'] as const;
 
 const DAY_NAMES_SHORT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
-const DAY_NAMES_FULL = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
 const MONTH_NAMES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 
 function formatDateDisplay(d: Date): string {

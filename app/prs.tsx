@@ -193,7 +193,7 @@ const PRsScreen: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [appUser?.id]);
+  }, [appUser]);
 
   useEffect(() => { load(); }, [load]);
 

@@ -1,7 +1,7 @@
 import { Stack, useFocusEffect, useRouter } from 'expo-router';
 import { doc, getDoc } from 'firebase/firestore';
 import React, { useCallback, useState } from 'react';
-import { ActivityIndicator, Alert, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Icon from '../../components/Icon';
 import { useAuth } from '../../src/context';
 import { db } from '../../src/services/firebase';

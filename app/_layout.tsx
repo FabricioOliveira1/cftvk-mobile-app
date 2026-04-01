@@ -43,7 +43,7 @@ function RootLayoutNav() {
         router.replace(appUser.role === 'admin' ? '/(admin)/dashboard' : '/(student)/dashboard');
       }
     }
-  }, [firebaseUser, appUser, loading, segments]);
+  }, [firebaseUser, appUser, loading, segments, router]);
 
   if (loading) return <LoadingScreen />;
 

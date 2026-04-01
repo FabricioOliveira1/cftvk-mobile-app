@@ -17,7 +17,7 @@ import {
 } from 'react-native';
 import Icon from '../components/Icon';
 import { useAuth } from '../src/context';
-import { auth, db } from '../src/services/firebase';
+import { db } from '../src/services/firebase';
 import { Colors, Fonts } from '../theme';
 
 const SetPasswordScreen: React.FC = () => {

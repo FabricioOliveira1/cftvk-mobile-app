@@ -18,7 +18,7 @@ export default function TabLayout() {
     if (!loading && appUser && appUser.role !== 'admin') {
       router.replace('/(student)/dashboard');
     }
-  }, [appUser?.role, loading]);
+  }, [appUser, loading, router]);
 
   return (
     <Tabs
