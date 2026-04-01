@@ -40,17 +40,24 @@ export interface Class {
   capacity: number;
   createdBy: string;
   sessions?: Session[];
+  wellhubSlotId?: string; // ID do slot no Wellhub após sincronização
 }
 
 export type ReservationStatus = 'BOOKED';
+
+export type ReservationSource = 'app' | 'wellhub';
 
 export interface Reservation {
   id: string;
   userId: string;
   classId: string;
   status: ReservationStatus;
-  classDate?: string; // YYYY-MM-DD — denormalizado para checar se a aula já passou
-  classTime?: string; // HH:mm    — denormalizado para checar se a aula já passou
+  classDate?: string;          // YYYY-MM-DD — denormalizado para checar se a aula já passou
+  classTime?: string;          // HH:mm      — denormalizado para checar se a aula já passou
+  source?: ReservationSource;  // origem da reserva (ausente = 'app' para dados legados)
+  wellhubBookingNumber?: string; // ex: "BK-ABC123" — usado para cancelamentos
+  wellhubUserName?: string;    // nome do usuário Wellhub para exibir na lista
+  wellhubUserId?: string;      // unique_token do usuário no Wellhub
   createdAt: Timestamp;
 }
 
