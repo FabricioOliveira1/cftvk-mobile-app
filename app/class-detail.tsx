@@ -167,6 +167,9 @@ const ClassDetailScreen: React.FC = () => {
 
       const withNames = await Promise.all(
         reservations.map(async (r) => {
+          if (r.source === 'wellhub') {
+            return { ...r, displayName: r.wellhubUserName ?? 'Usuário Wellhub', plan: undefined };
+          }
           const userSnap = await getDoc(doc(db, 'users', r.userId));
           const name = userSnap.exists() ? (userSnap.data().name as string) : 'Usuário';
           const plan = userSnap.exists() ? (userSnap.data().plan as string | undefined) : undefined;
@@ -394,12 +397,18 @@ const ClassDetailScreen: React.FC = () => {
                       )}
                     </View>
 
-                    {/* Middle: name + plano */}
+                    {/* Middle: name + plano / badge Wellhub */}
                     <View style={styles.attendeeInfo}>
                       <Text style={styles.attendeeName}>{attendee.displayName}</Text>
-                      <Text style={styles.attendeePlanText}>
-                        {attendee.plan ? `Aluno ${attendee.plan}` : 'Aluno'}
-                      </Text>
+                      {attendee.source === 'wellhub' ? (
+                        <View style={styles.wellhubBadge}>
+                          <Text style={styles.wellhubBadgeText}>Wellhub</Text>
+                        </View>
+                      ) : (
+                        <Text style={styles.attendeePlanText}>
+                          {attendee.plan ? `Aluno ${attendee.plan}` : 'Aluno'}
+                        </Text>
+                      )}
                     </View>
 
                     {/* Right: ações do admin */}
@@ -719,6 +728,20 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     fontFamily: Fonts.sansMedium,
     fontSize: 12,
+  },
+  wellhubBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#1a7a4a',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    marginTop: 2,
+  },
+  wellhubBadgeText: {
+    color: '#fff',
+    fontFamily: Fonts.sansBold,
+    fontSize: 11,
+    letterSpacing: 0.3,
   },
   moreButton: {
     width: 40,
