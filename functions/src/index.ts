@@ -1,7 +1,16 @@
+import * as crypto from 'crypto';
 import * as admin from 'firebase-admin';
 import { setGlobalOptions } from 'firebase-functions';
-import { HttpsError, onCall } from 'firebase-functions/v2/https';
+import { defineSecret } from 'firebase-functions/params';
+import { HttpsError, onCall, onRequest } from 'firebase-functions/v2/https';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
+
+// ── Wellhub secrets (configurar via: firebase functions:secrets:set <NAME>) ──
+const wellhubAuthToken = defineSecret('WELLHUB_AUTH_TOKEN');
+const wellhubSecretKey = defineSecret('WELLHUB_SECRET_KEY');
+const wellhubGymId     = defineSecret('WELLHUB_GYM_ID');
+const wellhubClassId   = defineSecret('WELLHUB_CLASS_ID');
+const wellhubBaseUrl   = defineSecret('WELLHUB_BASE_URL'); // produção ou sandbox
 
 admin.initializeApp();
 
@@ -720,3 +729,251 @@ export const fixClassCapacity = onCall(async (request) => {
 
   return { updated };
 });
+
+// ---------------------------------------------------------------------------
+// Seed mensal genérico (aceita dados como parâmetro — sem redeploy por mês)
+// ---------------------------------------------------------------------------
+
+interface WodSession   { id: string; title: string; details: string; }
+interface WodBatchEntry { date: string; title: string; sessions: WodSession[]; }
+
+export const seedWodBatch = onCall({ timeoutSeconds: 300 }, async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Login necessário.');
+  const callerDoc = await admin.firestore().doc(`users/${request.auth.uid}`).get();
+  if (!callerDoc.exists || callerDoc.data()!.role !== 'admin') {
+    throw new HttpsError('permission-denied', 'Apenas administradores podem usar esta função.');
+  }
+
+  const { entries } = request.data as { entries: WodBatchEntry[] };
+  if (!entries || !Array.isArray(entries)) {
+    throw new HttpsError('invalid-argument', 'entries[] é obrigatório.');
+  }
+
+  const db = admin.firestore();
+  const uid = request.auth.uid;
+
+  const results = await Promise.all(
+    entries
+      .filter((e) => e.title !== 'FECHADO')
+      .map(async (entry) => {
+        const { date, title, sessions } = entry;
+        const dayOfWeek = new Date(date + 'T12:00:00Z').getUTCDay();
+        const slots = COACH_SCHEDULE[dayOfWeek] ?? [];
+
+        // Cascade delete classes + reservas existentes para a data
+        const existingClasses = await db.collection('classes').where('date', '==', date).get();
+        if (!existingClasses.empty) {
+          const batch = db.batch();
+          for (const cls of existingClasses.docs) {
+            const resSnap = await db.collection('reservations').where('classId', '==', cls.id).get();
+            resSnap.docs.forEach((r) => batch.delete(r.ref));
+            batch.delete(cls.ref);
+          }
+          await batch.commit();
+        }
+
+        // Criar wod/{date}
+        await db.doc(`wods/${date}`).set({
+          date,
+          sessions,
+          createdBy: uid,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        // Criar aulas por horário em paralelo
+        await Promise.all(
+          slots.map((slot) =>
+            db.collection('classes').add({
+              title,
+              coach: slot.coach,
+              date,
+              time: slot.time,
+              capacity: 15,
+              createdBy: uid,
+            })
+          )
+        );
+
+        return slots.length;
+      })
+  );
+
+  return {
+    datesProcessed: results.length,
+    wodsCreated: results.length,
+    classesCreated: results.reduce((sum, n) => sum + n, 0),
+  };
+});
+
+// ---------------------------------------------------------------------------
+// Wellhub integration
+// ---------------------------------------------------------------------------
+
+/**
+ * wellhubWebhook — HTTP endpoint (público) que recebe eventos de reserva/cancelamento do Wellhub.
+ * Configurar URL no Partners Portal: https://us-central1-cftvk-edcff.cloudfunctions.net/wellhubWebhook
+ */
+export const wellhubWebhook = onRequest(
+  { secrets: [wellhubAuthToken, wellhubSecretKey, wellhubGymId] },
+  async (req, res) => {
+    // Validar assinatura HMAC-SHA1
+    const signature = req.headers['x-gympass-signature'] as string | undefined;
+    const rawBody   = JSON.stringify(req.body);
+    const expected  = crypto
+      .createHmac('sha1', wellhubSecretKey.value())
+      .update(rawBody)
+      .digest('hex')
+      .toUpperCase();
+
+    if (!signature || signature !== expected) {
+      res.status(403).send('Invalid signature');
+      return;
+    }
+
+    const { event_type, event_data } = req.body as {
+      event_type: string;
+      event_data: {
+        user: { unique_token: string; name: string; email?: string };
+        slot: { id: number; gym_id: number; class_id: number; booking_number: string };
+      };
+    };
+
+    const db      = admin.firestore();
+    const gymId   = wellhubGymId.value();
+    const token   = wellhubAuthToken.value();
+    const baseUrl = wellhubBaseUrl.value?.() ?? 'https://api.partners.gympass.com';
+
+    const patchBooking = (bookingNumber: string, status: string, reasonCategory?: string) =>
+      fetch(`${baseUrl}/booking/v2/gyms/${gymId}/bookings/${bookingNumber}`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(reasonCategory ? { status, reason_category: reasonCategory } : { status }),
+      });
+
+    if (event_type === 'booking-requested') {
+      const { slot, user } = event_data;
+
+      // Localizar a aula pelo wellhubSlotId
+      const classSnap = await db
+        .collection('classes')
+        .where('wellhubSlotId', '==', String(slot.id))
+        .limit(1)
+        .get();
+
+      if (classSnap.empty) {
+        await patchBooking(slot.booking_number, 'REJECTED', 'USAGE_RESTRICTION');
+        res.status(200).send('ok');
+        return;
+      }
+
+      const classDoc  = classSnap.docs[0];
+      const classData = classDoc.data();
+
+      // Verificar capacidade
+      const resSnap = await db
+        .collection('reservations')
+        .where('classId', '==', classDoc.id)
+        .get();
+
+      if (resSnap.size >= classData.capacity) {
+        await patchBooking(slot.booking_number, 'REJECTED', 'CLASS_IS_FULL');
+        res.status(200).send('ok');
+        return;
+      }
+
+      // Criar reserva
+      await db.collection('reservations').add({
+        userId:               `wellhub_${user.unique_token}`,
+        classId:              classDoc.id,
+        status:               'BOOKED',
+        source:               'wellhub',
+        wellhubBookingNumber: slot.booking_number,
+        wellhubUserName:      user.name,
+        wellhubUserId:        user.unique_token,
+        classDate:            classData.date,
+        classTime:            classData.time,
+        createdAt:            admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      await patchBooking(slot.booking_number, 'RESERVED');
+      res.status(200).send('ok');
+      return;
+    }
+
+    if (event_type === 'booking-canceled' || event_type === 'booking-late-canceled') {
+      const { slot } = event_data;
+      const resSnap = await db
+        .collection('reservations')
+        .where('wellhubBookingNumber', '==', slot.booking_number)
+        .limit(1)
+        .get();
+
+      if (!resSnap.empty) {
+        await resSnap.docs[0].ref.delete();
+      }
+      res.status(200).send('ok');
+      return;
+    }
+
+    res.status(200).send('ok');
+  }
+);
+
+/**
+ * syncClassToWellhub — Registra uma aula do CFTVK como "slot" no Wellhub.
+ * Chamada pelo admin. Salva o wellhubSlotId de volta no documento da aula.
+ * Parâmetros: { classId: string }
+ * O wellhubClassId é lido do secret WELLHUB_CLASS_ID.
+ */
+export const syncClassToWellhub = onCall(
+  { secrets: [wellhubAuthToken, wellhubGymId, wellhubClassId, wellhubBaseUrl] },
+  async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Login necessário.');
+    const callerDoc = await admin.firestore().doc(`users/${request.auth.uid}`).get();
+    if (!callerDoc.exists || callerDoc.data()!.role !== 'admin') {
+      throw new HttpsError('permission-denied', 'Apenas administradores podem usar esta função.');
+    }
+
+    const { classId } = request.data as { classId: string };
+    if (!classId) throw new HttpsError('invalid-argument', 'classId é obrigatório.');
+
+    const db        = admin.firestore();
+    const classDoc  = await db.doc(`classes/${classId}`).get();
+    if (!classDoc.exists) throw new HttpsError('not-found', 'Aula não encontrada.');
+
+    const cls     = classDoc.data()!;
+    const gymId   = wellhubGymId.value();
+    const token   = wellhubAuthToken.value();
+    const wClassId = wellhubClassId.value();
+    const baseUrl  = wellhubBaseUrl.value?.() ?? 'https://api.partners.gympass.com';
+
+    // occur_date: ISO 8601 com fuso Brasil (BRT = UTC-3)
+    const occurDate = `${cls.date}T${cls.time}:00-03:00`;
+
+    const response = await fetch(
+      `${baseUrl}/booking/v1/gyms/${gymId}/classes/${wClassId}/slots`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          occur_date:       occurDate,
+          length_in_minutes: 60,
+          total_capacity:   cls.capacity,
+          total_booked:     0,
+          status:           1,
+          instructors:      [{ name: cls.coach }],
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new HttpsError('internal', `Wellhub API error: ${error}`);
+    }
+
+    const slotData = await response.json() as { id: number };
+    await db.doc(`classes/${classId}`).update({ wellhubSlotId: String(slotData.id) });
+
+    return { wellhubSlotId: slotData.id };
+  }
+);
