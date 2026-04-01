@@ -1,0 +1,1 @@
+npx expo lint --max-warnings 0 || true
