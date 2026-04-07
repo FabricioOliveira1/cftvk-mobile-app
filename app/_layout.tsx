@@ -1,6 +1,8 @@
 import { useRouter, useSegments, Stack } from 'expo-router';
 import { useEffect } from 'react';
+import OfflineBanner from '../components/OfflineBanner';
 import { AuthProvider, useAuth } from '../src/context';
+import { NetworkProvider } from '../src/context/NetworkContext';
 import { Colors } from '../theme';
 import LoadingScreen from '../components/LoadingScreen';
 
@@ -75,8 +77,11 @@ function RootLayoutNav() {
 
 export default function RootLayout() {
   return (
-    <AuthProvider>
-      <RootLayoutNav />
-    </AuthProvider>
+    <NetworkProvider>
+      <AuthProvider>
+        <RootLayoutNav />
+        <OfflineBanner />
+      </AuthProvider>
+    </NetworkProvider>
   );
 }
