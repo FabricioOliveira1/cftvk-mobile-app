@@ -22,7 +22,8 @@ function RootLayoutNav() {
       segments[0] === 'class-detail' ||
       segments[0] === 'new-class' ||
       segments[0] === 'prs' ||
-      segments[0] === 'set-password';
+      segments[0] === 'set-password' ||
+      segments[0] === 'change-password';
 
     if (!firebaseUser && inProtectedRoute) {
       router.replace('/');
@@ -71,6 +72,7 @@ function RootLayoutNav() {
       />
       <Stack.Screen name="prs" />
       <Stack.Screen name="set-password" />
+      <Stack.Screen name="change-password" />
     </Stack>
   );
 }

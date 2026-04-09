@@ -30,6 +30,7 @@ interface ClassListItemProps {
   historyMode?: boolean;
   classEnded?: boolean;
   classStarted?: boolean;
+  enrollmentInactive?: boolean;
 }
 
 const ClassListItem: React.FC<ClassListItemProps> = ({
@@ -43,6 +44,7 @@ const ClassListItem: React.FC<ClassListItemProps> = ({
   historyMode = false,
   classEnded = false,
   classStarted = false,
+  enrollmentInactive = false,
 }) => {
   const hasReservation = !!myReservationId;
 
@@ -89,6 +91,14 @@ const ClassListItem: React.FC<ClassListItemProps> = ({
         <View style={styles.pendingBadge}>
           <Icon name="schedule" size={12} color={Colors.slate[400]} />
           <Text style={styles.pendingText}>{timeStatus.opensLabel}</Text>
+        </View>
+      );
+    }
+    if (enrollmentInactive) {
+      return (
+        <View style={styles.inactiveBadge}>
+          <Icon name="block" size={12} color={Colors.red[500]} />
+          <Text style={styles.inactiveText}>Inativo</Text>
         </View>
       );
     }
@@ -192,6 +202,20 @@ const styles = StyleSheet.create({
   pendingText: {
     color: Colors.slate[400],
     fontFamily: Fonts.sansMedium,
+    fontSize: 11,
+  },
+  inactiveBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: 'rgba(239,68,68,0.08)',
+  },
+  inactiveText: {
+    color: Colors.red[500],
+    fontFamily: Fonts.sansBold,
     fontSize: 11,
   },
   actionLoader: {

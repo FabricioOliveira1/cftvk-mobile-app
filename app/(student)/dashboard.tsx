@@ -116,6 +116,10 @@ const StudentDashboardScreen: React.FC = () => {
   const router = useRouter();
   const { appUser } = useAuth();
 
+  const isInactive =
+    appUser?.enrollmentActive === false ||
+    (appUser?.planExpiresAt != null && appUser.planExpiresAt.toDate() < new Date());
+
   const [todayClasses, setTodayClasses] = useState<ClassWithExtra[]>([]);
   const [nextClass, setNextClass] = useState<Class | null>(null);
   const [todayWod, setTodayWod] = useState<Wod | null>(null);
@@ -176,6 +180,10 @@ const StudentDashboardScreen: React.FC = () => {
 
   const handleReserve = async (cls: Class) => {
     if (!appUser) return;
+    if (isInactive) {
+      Alert.alert('Matrícula inativa', 'Sua matrícula está inativa. Entre em contato com a academia.');
+      return;
+    }
 
     const item = todayClasses.find((i) => i.cls.id === cls.id);
     if (item && item.count >= cls.capacity) {
@@ -249,6 +257,15 @@ const StudentDashboardScreen: React.FC = () => {
         showsVerticalScrollIndicator={false}
       >
         <ScreenHeader adminName={appUser?.name?.split(' ')[0]} />
+
+        {isInactive && (
+          <View style={styles.inactiveBanner}>
+            <Icon name="warning" size={16} color={Colors.red[500]} />
+            <Text style={styles.inactiveBannerText}>
+              Matrícula inativa — entre em contato com a academia.
+            </Text>
+          </View>
+        )}
 
         {loading ? (
           <ActivityIndicator color={Colors.primary} style={{ marginBottom: 32 }} />
@@ -361,6 +378,7 @@ const StudentDashboardScreen: React.FC = () => {
                         timeStatus={timeStatus}
                         classEnded={ended}
                         classStarted={started}
+                        enrollmentInactive={isInactive}
                       />
                     </View>
                   );
@@ -402,6 +420,24 @@ const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: Colors.backgroundDark },
   scrollView: { flex: 1 },
   contentContainer: { padding: 24, paddingBottom: 100 },
+  inactiveBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(239,68,68,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(239,68,68,0.3)',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginBottom: 16,
+  },
+  inactiveBannerText: {
+    color: Colors.red[500],
+    fontFamily: Fonts.sansMedium,
+    fontSize: 13,
+    flex: 1,
+  },
 
   // Próxima Aula
   nextClassCard: {

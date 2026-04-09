@@ -119,6 +119,22 @@ const ProfileScreen: React.FC = () => {
           </View>
         </View>
 
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Segurança</Text>
+          <TouchableOpacity
+            style={styles.card}
+            onPress={() => router.push('/change-password')}
+          >
+            <View style={styles.cardRow}>
+              <Icon name="lock-reset" size={20} color={Colors.slate[500]} />
+              <View style={styles.cardTextContainer}>
+                <Text style={styles.cardValue}>Alterar Senha</Text>
+              </View>
+              <Icon name="chevron-right" size={20} color={Colors.slate[600]} />
+            </View>
+          </TouchableOpacity>
+        </View>
+
         <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
           <Icon name="logout" size={20} color={Colors.red[500]} />
           <Text style={styles.logoutButtonText}>Sair</Text>

@@ -91,6 +91,10 @@ const StudentScheduleScreen: React.FC = () => {
   const router = useRouter();
   const { appUser } = useAuth();
 
+  const isInactive =
+    appUser?.enrollmentActive === false ||
+    (appUser?.planExpiresAt != null && appUser.planExpiresAt.toDate() < new Date());
+
   const [days] = useState<DayItem[]>(getWeekDays());
   const [selectedDate, setSelectedDate] = useState<string>(todayString);
   const [classes, setClasses] = useState<Class[]>([]);
@@ -149,6 +153,10 @@ const StudentScheduleScreen: React.FC = () => {
 
   const handleReserve = async (cls: Class) => {
     if (!appUser) return;
+    if (isInactive) {
+      Alert.alert('Matrícula inativa', 'Sua matrícula está inativa. Entre em contato com a academia.');
+      return;
+    }
 
     const count = reservationCounts[cls.id] ?? 0;
     if (count >= cls.capacity) {
@@ -291,6 +299,7 @@ const StudentScheduleScreen: React.FC = () => {
                   timeStatus={timeStatus}
                   classEnded={ended}
                   classStarted={started}
+                  enrollmentInactive={isInactive}
                 />
               );
             })

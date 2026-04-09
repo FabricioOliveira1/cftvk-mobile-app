@@ -130,6 +130,10 @@ const ClassDetailScreen: React.FC = () => {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { appUser } = useAuth();
 
+  const isInactive =
+    appUser?.enrollmentActive === false ||
+    (appUser?.planExpiresAt != null && appUser.planExpiresAt.toDate() < new Date());
+
   const [classData, setClassData] = useState<Class | null>(null);
   const [wodSessions, setWodSessions] = useState<Session[]>([]);
   const [attendees, setAttendees] = useState<AttendeeWithName[]>([]);
@@ -188,6 +192,10 @@ const ClassDetailScreen: React.FC = () => {
 
   const handleReserve = async () => {
     if (!appUser || !id || !classData) return;
+    if (isInactive) {
+      Alert.alert('Matrícula inativa', 'Sua matrícula está inativa. Entre em contato com a academia.');
+      return;
+    }
     if (attendees.length >= classData.capacity) {
       Alert.alert('Aula lotada', 'Não há mais vagas disponíveis.');
       return;
@@ -457,10 +465,17 @@ const ClassDetailScreen: React.FC = () => {
                 ) : null
               ) : (
                 appUser?.role !== 'admin' && (
-                  <TouchableOpacity style={styles.reserveButton} onPress={handleReserve}>
-                    <Icon name="event-available" size={20} color={Colors.backgroundDark} />
-                    <Text style={styles.reserveButtonText}>RESERVAR AULA</Text>
-                  </TouchableOpacity>
+                  isInactive ? (
+                    <View style={styles.reserveButtonDisabled}>
+                      <Icon name="block" size={20} color={Colors.textMuted} />
+                      <Text style={styles.reserveButtonDisabledText}>MATRÍCULA INATIVA</Text>
+                    </View>
+                  ) : (
+                    <TouchableOpacity style={styles.reserveButton} onPress={handleReserve}>
+                      <Icon name="event-available" size={20} color={Colors.backgroundDark} />
+                      <Text style={styles.reserveButtonText}>RESERVAR AULA</Text>
+                    </TouchableOpacity>
+                  )
                 )
               )}
             </View>
@@ -799,6 +814,23 @@ const styles = StyleSheet.create({
   },
   reserveButtonText: {
     color: Colors.backgroundDark,
+    fontFamily: Fonts.sansBold,
+    fontSize: 14,
+    letterSpacing: 0.5,
+  },
+  reserveButtonDisabled: {
+    height: 52,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+  },
+  reserveButtonDisabledText: {
+    color: Colors.textMuted,
     fontFamily: Fonts.sansBold,
     fontSize: 14,
     letterSpacing: 0.5,
