@@ -60,6 +60,10 @@ functions/*.json
 *.json
 !.commitlintrc.json
 !google-services.json
+!package.json
+!app.json
+!eas.json
+!tsconfig.json
 
 
 .env
