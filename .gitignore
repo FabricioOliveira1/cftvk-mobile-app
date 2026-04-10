@@ -59,6 +59,7 @@ functions/*.js
 functions/*.json
 *.json
 !.commitlintrc.json
+!google-services.json
 
 
 .env
