@@ -17,18 +17,18 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import Icon from '../components/Icon';
+import SessionEditorSheet from '../components/SessionEditorSheet';
 import { useAuth } from '../src/context';
-import { createClass, getCoaches, updateClass } from '../src/services';
+import { createClass, getCoaches, setWodForDate, updateClass } from '../src/services';
 import { db } from '../src/services/firebase';
-import { AppUser } from '../src/types';
+import { AppUser, Session } from '../src/types';
 import { Colors, Fonts } from '../theme';
 
 const PRESET_TIMES = ['06:00', '08:00', '09:00', '15:00', '18:00', '19:00', '20:00'];
 
-// Estrutura de modalidades — adicione novas opções aqui quando necessário
 const CLASS_TYPES = ['Crossfit'] as const;
 
 const DAY_NAMES_SHORT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
@@ -50,14 +50,14 @@ function isoToDate(iso: string): Date {
   return new Date(y, m - 1, d);
 }
 
-// ── Type Button ────────────────────────────────────────────────────────────────
+// ── TypeButton ────────────────────────────────────────────────────────────────
 const TypeButton: React.FC<{ title: string; isActive: boolean; onPress: () => void }> = ({ title, isActive, onPress }) => (
   <TouchableOpacity onPress={onPress} style={[styles.typeButton, isActive && styles.typeButtonActive]}>
     <Text style={[styles.typeButtonText, isActive && styles.typeButtonTextActive]}>{title}</Text>
   </TouchableOpacity>
 );
 
-// ── Date Picker Modal ──────────────────────────────────────────────────────────
+// ── DatePickerModal ───────────────────────────────────────────────────────────
 const DatePickerModal: React.FC<{
   visible: boolean;
   selectedDate: Date;
@@ -65,41 +65,32 @@ const DatePickerModal: React.FC<{
   onClose: () => void;
 }> = ({ visible, selectedDate, onSelect, onClose }) => {
   const [tempDate, setTempDate] = useState<Date>(selectedDate);
+  const insets = useSafeAreaInsets();
 
   React.useEffect(() => {
-    if (visible) {
-      setTempDate(selectedDate);
-    }
+    if (visible) setTempDate(selectedDate);
   }, [selectedDate, visible]);
-
-  const handleChange = (_event: any, date?: Date) => {
-    if (date) {
-      setTempDate(date);
-    }
-  };
-
-  const handleConfirm = () => {
-    onSelect(tempDate);
-    onClose();
-  };
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <Pressable style={styles.modalBackdrop} onPress={onClose}>
-        <View style={styles.pickerSheet} onStartShouldSetResponder={() => true}>
+        <View
+          style={[styles.pickerSheet, { paddingBottom: Math.max(insets.bottom, 24) }]}
+          onStartShouldSetResponder={() => true}
+        >
           <View style={styles.handle} />
           <Text style={styles.pickerTitle}>Selecionar Data</Text>
           <DateTimePicker
             value={tempDate}
             mode="date"
-            display={Platform.OS === 'ios' ? 'inline' : 'calendar'}
-            onChange={handleChange}
+            display={Platform.OS === 'ios' ? 'inline' : 'spinner'}
+            onChange={(_e, d) => { if (d) setTempDate(d); }}
           />
           <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 16, gap: 12 }}>
             <TouchableOpacity onPress={onClose}>
               <Text style={{ color: Colors.textMuted, fontFamily: Fonts.sansMedium, fontSize: 15 }}>Cancelar</Text>
             </TouchableOpacity>
-            <TouchableOpacity onPress={handleConfirm}>
+            <TouchableOpacity onPress={() => { onSelect(tempDate); onClose(); }}>
               <Text style={{ color: Colors.primary, fontFamily: Fonts.sansBold, fontSize: 15 }}>Selecionar</Text>
             </TouchableOpacity>
           </View>
@@ -109,7 +100,7 @@ const DatePickerModal: React.FC<{
   );
 };
 
-// ── Coach Picker Modal ─────────────────────────────────────────────────────────
+// ── CoachPickerModal ──────────────────────────────────────────────────────────
 const CoachPickerModal: React.FC<{
   visible: boolean;
   coaches: AppUser[];
@@ -134,12 +125,8 @@ const CoachPickerModal: React.FC<{
                 onPress={() => { onSelect(c.name); onClose(); }}
               >
                 <View style={{ flex: 1 }}>
-                  <Text style={[styles.pickerOptionTitle, isSelected && styles.pickerOptionTextActive]}>
-                    {c.name}
-                  </Text>
-                  <Text style={[styles.pickerOptionSub, isSelected && styles.pickerOptionTextActive]}>
-                    Coach
-                  </Text>
+                  <Text style={[styles.pickerOptionTitle, isSelected && styles.pickerOptionTextActive]}>{c.name}</Text>
+                  <Text style={[styles.pickerOptionSub, isSelected && styles.pickerOptionTextActive]}>Coach</Text>
                 </View>
                 {isSelected && <Icon name="check-circle" size={22} color={Colors.backgroundDark} />}
               </TouchableOpacity>
@@ -151,7 +138,7 @@ const CoachPickerModal: React.FC<{
   </Modal>
 );
 
-// ── Screen ─────────────────────────────────────────────────────────────────────
+// ── Main Screen ───────────────────────────────────────────────────────────────
 const NewClassScreen: React.FC = () => {
   const router = useRouter();
   const { appUser } = useAuth();
@@ -164,13 +151,16 @@ const NewClassScreen: React.FC = () => {
   const [loadingClass, setLoadingClass] = useState(isEditing);
   const [classType, setClassType] = useState<typeof CLASS_TYPES[number]>(CLASS_TYPES[0]);
   const [date, setDate] = useState<Date>(todayMidnight);
-  const [selectedTime, setSelectedTime] = useState('');
+  // Edit mode: single time (loaded from class). Create mode: all times selected by default.
+  const [selectedTimes, setSelectedTimes] = useState<string[]>(isEditing ? [] : [...PRESET_TIMES]);
   const [coachName, setCoachName] = useState('');
   const [capacity, setCapacity] = useState('15');
+  const [sessions, setSessions] = useState<Session[]>([]);
   const [coaches, setCoaches] = useState<AppUser[]>([]);
   const [saving, setSaving] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showCoachPicker, setShowCoachPicker] = useState(false);
+  const [showWodModal, setShowWodModal] = useState(false);
 
   useEffect(() => {
     getCoaches().then(setCoaches);
@@ -184,7 +174,7 @@ const NewClassScreen: React.FC = () => {
           const data = snap.data();
           if (data.title) setClassType(data.title as typeof CLASS_TYPES[number]);
           if (data.date) setDate(isoToDate(data.date));
-          if (data.time) setSelectedTime(data.time);
+          if (data.time) setSelectedTimes([data.time]);
           if (data.coach) setCoachName(data.coach);
           if (data.capacity) setCapacity(String(data.capacity));
         }
@@ -192,10 +182,26 @@ const NewClassScreen: React.FC = () => {
       .finally(() => setLoadingClass(false));
   }, [id]);
 
+  const allTimesSelected = selectedTimes.length === PRESET_TIMES.length;
+
+  const toggleTime = (t: string) => {
+    if (isEditing) {
+      setSelectedTimes([t]);
+    } else {
+      setSelectedTimes((prev) =>
+        prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]
+      );
+    }
+  };
+
+  const toggleAll = () => {
+    setSelectedTimes(allTimesSelected ? [] : [...PRESET_TIMES]);
+  };
+
   const handlePublish = async () => {
     if (!appUser) return;
-    if (!selectedTime) {
-      Alert.alert('Campos obrigatórios', 'Selecione um horário.');
+    if (selectedTimes.length === 0) {
+      Alert.alert('Campos obrigatórios', 'Selecione pelo menos um horário.');
       return;
     }
     if (!coachName) {
@@ -204,23 +210,28 @@ const NewClassScreen: React.FC = () => {
     }
     setSaving(true);
     try {
-      const payload = {
+      const dateISO = dateToISO(date);
+      const basePayload = {
         title: classType,
         coach: coachName,
-        date: dateToISO(date),
-        time: selectedTime,
+        date: dateISO,
         capacity: parseInt(capacity) || 15,
       };
       if (isEditing) {
-        await updateClass(id, payload);
+        await updateClass(id, { ...basePayload, time: selectedTimes[0] });
       } else {
-        await createClass(appUser.id, payload);
+        await Promise.all(
+          selectedTimes.map((time) => createClass(appUser.id, { ...basePayload, time }))
+        );
+        if (sessions.length > 0) {
+          await setWodForDate(dateISO, sessions, appUser.id);
+        }
       }
       router.back();
     } catch {
       Alert.alert('Erro', isEditing
         ? 'Não foi possível salvar as alterações.'
-        : 'Não foi possível criar a aula.'
+        : 'Não foi possível criar as aulas.'
       );
     } finally {
       setSaving(false);
@@ -234,24 +245,22 @@ const NewClassScreen: React.FC = () => {
       onMoveShouldSetPanResponder: (_evt, gestureState) => {
         if (!isNewClass) return false;
         const { dx, dy } = gestureState;
-        // Só começa o gesto se for um arrasto basicamente vertical
         return Math.abs(dy) > 10 && Math.abs(dx) < 10;
       },
       onPanResponderRelease: (_evt, gestureState) => {
         if (!isNewClass) return;
-        // Se o usuário arrastou pra baixo o suficiente, fecha o modal
-        if (gestureState.dy > 40) {
-          router.back();
-        }
+        if (gestureState.dy > 40) router.back();
       },
     })
   ).current;
 
   const screenTitle = isEditing ? 'Editar Aula' : 'Nova Aula';
+  const wodLabel = sessions.length > 0
+    ? `Treino adicionado (${sessions.length} ${sessions.length === 1 ? 'sessão' : 'sessões'})`
+    : 'Adicionar treino do dia';
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-      {/* Header próprio: título condicional + botão voltar (sem Stack.Screen) */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.headerBack} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
           <Icon name="arrow-back-ios-new" size={22} color={Colors.white} />
@@ -272,91 +281,114 @@ const NewClassScreen: React.FC = () => {
           style={styles.flex}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
-        <ScrollView
-          style={styles.flex}
-          contentContainerStyle={styles.scrollContent}
-          keyboardShouldPersistTaps="handled"
-          nestedScrollEnabled
-          showsVerticalScrollIndicator={false}
-        >
-          {/* Content */}
-          <View style={styles.content}>
-              <>
-                  {/* Tipo de Aula */}
-                  <View style={styles.section}>
-                    <Text style={styles.label}>Tipo de Aula</Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                      {CLASS_TYPES.map((t) => (
-                        <TypeButton
-                          key={t}
-                          title={t}
-                          isActive={classType === t}
-                          onPress={() => setClassType(t)}
-                        />
-                      ))}
-                    </ScrollView>
-                  </View>
+          <ScrollView
+            style={styles.flex}
+            contentContainerStyle={styles.scrollContent}
+            keyboardShouldPersistTaps="handled"
+            nestedScrollEnabled
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={styles.content}>
+              {/* Tipo de Aula */}
+              <View style={styles.section}>
+                <Text style={styles.label}>Tipo de Aula</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  {CLASS_TYPES.map((t) => (
+                    <TypeButton key={t} title={t} isActive={classType === t} onPress={() => setClassType(t)} />
+                  ))}
+                </ScrollView>
+              </View>
 
-                  {/* Data */}
-                  <View style={styles.section}>
-                    <Text style={styles.label}>Data</Text>
-                    <TouchableOpacity style={styles.selectorRow} onPress={() => setShowDatePicker(true)}>
-                      <Icon name="calendar-today" size={20} color={Colors.textMuted} />
-                      <Text style={styles.selectorText}>{formatDateDisplay(date)}</Text>
-                      <Icon name="expand-more" size={22} color={Colors.textMuted} />
-                    </TouchableOpacity>
-                  </View>
+              {/* Data */}
+              <View style={styles.section}>
+                <Text style={styles.label}>Data</Text>
+                <TouchableOpacity style={styles.selectorRow} onPress={() => setShowDatePicker(true)}>
+                  <Icon name="calendar-today" size={20} color={Colors.textMuted} />
+                  <Text style={styles.selectorText}>{formatDateDisplay(date)}</Text>
+                  <Icon name="expand-more" size={22} color={Colors.textMuted} />
+                </TouchableOpacity>
+              </View>
 
-                  {/* Horário — seleção guardada em selectedTime e enviada no formulário */}
-                  <View style={styles.section}>
-                    <Text style={styles.label}>Horário</Text>
-                    <View style={styles.timeGrid}>
-                      {PRESET_TIMES.map((t) => {
-                        const isActive = selectedTime === t;
-                        return (
-                          <TouchableOpacity
-                            key={t}
-                            style={[styles.timeChip, isActive && styles.timeChipActive]}
-                            onPress={() => setSelectedTime(t)}
-                            activeOpacity={0.8}
-                          >
-                            <Text style={[styles.timeChipText, isActive && styles.timeChipTextActive]}>
-                              {t}
-                            </Text>
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </View>
-                  </View>
-
-                  {/* Coach */}
-                  <View style={styles.section}>
-                    <Text style={styles.label}>Coach</Text>
-                    <TouchableOpacity style={styles.selectorRow} onPress={() => setShowCoachPicker(true)}>
-                      <Icon name="person" size={20} color={Colors.textMuted} />
-                      <Text style={[styles.selectorText, !coachName && styles.selectorPlaceholder]}>
-                        {coachName || 'Selecionar coach'}
+              {/* Horários */}
+              <View style={styles.section}>
+                <Text style={styles.label}>{isEditing ? 'Horário' : 'Horários'}</Text>
+                <View style={styles.timeGrid}>
+                  {!isEditing && (
+                    <TouchableOpacity
+                      style={[styles.timeChip, allTimesSelected && styles.timeChipActive]}
+                      onPress={toggleAll}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={[styles.timeChipText, allTimesSelected && styles.timeChipTextActive]}>
+                        Todos
                       </Text>
-                      <Icon name="expand-more" size={22} color={Colors.textMuted} />
                     </TouchableOpacity>
-                  </View>
+                  )}
+                  {PRESET_TIMES.map((t) => {
+                    const isActive = selectedTimes.includes(t);
+                    return (
+                      <TouchableOpacity
+                        key={t}
+                        style={[styles.timeChip, isActive && styles.timeChipActive]}
+                        onPress={() => toggleTime(t)}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={[styles.timeChipText, isActive && styles.timeChipTextActive]}>{t}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
 
-                  {/* Vagas */}
-                  <View style={styles.section}>
-                    <Text style={styles.label}>Vagas</Text>
-                    <View style={styles.inputContainer}>
-                      <TextInput
-                        style={styles.input}
-                        keyboardType="numeric"
-                        value={capacity}
-                        onChangeText={setCapacity}
-                        placeholderTextColor={Colors.textMuted}
-                      />
-                    </View>
-                  </View>
-              </>
+              {/* Coach */}
+              <View style={styles.section}>
+                <Text style={styles.label}>Coach</Text>
+                <TouchableOpacity style={styles.selectorRow} onPress={() => setShowCoachPicker(true)}>
+                  <Icon name="person" size={20} color={Colors.textMuted} />
+                  <Text style={[styles.selectorText, !coachName && styles.selectorPlaceholder]}>
+                    {coachName || 'Selecionar coach'}
+                  </Text>
+                  <Icon name="expand-more" size={22} color={Colors.textMuted} />
+                </TouchableOpacity>
+              </View>
 
-              {/* Botões — dentro do scroll, abaixo do conteúdo */}
+              {/* Vagas */}
+              <View style={styles.section}>
+                <Text style={styles.label}>Vagas</Text>
+                <View style={styles.inputContainer}>
+                  <TextInput
+                    style={styles.input}
+                    keyboardType="numeric"
+                    value={capacity}
+                    onChangeText={setCapacity}
+                    placeholderTextColor={Colors.textMuted}
+                  />
+                </View>
+              </View>
+
+              {/* Treino do Dia — somente no modo criação */}
+              {!isEditing && (
+                <View style={styles.section}>
+                  <Text style={styles.label}>Treino do Dia</Text>
+                  <TouchableOpacity style={styles.selectorRow} onPress={() => setShowWodModal(true)}>
+                    <Icon
+                      name={sessions.length > 0 ? 'check-circle' : 'fitness-center'}
+                      size={20}
+                      color={sessions.length > 0 ? Colors.primary : Colors.textMuted}
+                    />
+                    <Text style={[styles.selectorText, sessions.length === 0 && styles.selectorPlaceholder]}>
+                      {wodLabel}
+                    </Text>
+                    <Icon
+                      name={sessions.length > 0 ? 'edit' : 'add'}
+                      size={22}
+                      color={sessions.length > 0 ? Colors.primary : Colors.textMuted}
+                    />
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {/* Ações */}
               <View style={styles.actions}>
                 <TouchableOpacity style={styles.cancelButton} onPress={() => router.back()}>
                   <Text style={styles.cancelButtonText}>CANCELAR</Text>
@@ -372,7 +404,7 @@ const NewClassScreen: React.FC = () => {
                 </TouchableOpacity>
               </View>
             </View>
-        </ScrollView>
+          </ScrollView>
         </KeyboardAvoidingView>
       )}
 
@@ -389,6 +421,44 @@ const NewClassScreen: React.FC = () => {
         onSelect={setCoachName}
         onClose={() => setShowCoachPicker(false)}
       />
+
+      {/* Modal do Treino do Dia */}
+      <Modal visible={showWodModal} animationType="slide" onRequestClose={() => setShowWodModal(false)}>
+        <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+          <View style={styles.header}>
+            <TouchableOpacity
+              onPress={() => setShowWodModal(false)}
+              style={styles.headerBack}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            >
+              <Icon name="arrow-back-ios-new" size={22} color={Colors.white} />
+            </TouchableOpacity>
+            <View style={styles.headerTitleWrapper}>
+              <Text style={styles.headerTitle}>Treino do Dia</Text>
+              <Text style={styles.wodModalDate}>{formatDateDisplay(date)}</Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => setShowWodModal(false)}
+              style={styles.headerDoneButton}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            >
+              <Text style={styles.headerDoneText}>CONCLUÍDO</Text>
+            </TouchableOpacity>
+          </View>
+          <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+            <ScrollView
+              style={styles.flex}
+              contentContainerStyle={styles.scrollContent}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              <View style={styles.content}>
+                <SessionEditorSheet sessions={sessions} onChange={setSessions} />
+              </View>
+            </ScrollView>
+          </KeyboardAvoidingView>
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -410,9 +480,11 @@ const styles = StyleSheet.create({
   headerBack: { width: 40, alignItems: 'flex-start' },
   headerTitleWrapper: { flex: 1, alignItems: 'center' },
   headerTitle: { color: Colors.white, fontFamily: Fonts.sansBold, fontSize: 18 },
+  headerDoneButton: { minWidth: 80, alignItems: 'flex-end', justifyContent: 'center' },
+  headerDoneText: { color: Colors.primary, fontFamily: Fonts.sansBold, fontSize: 13, letterSpacing: 0.3 },
+  wodModalDate: { color: Colors.primary, fontFamily: Fonts.sansMedium, fontSize: 12, marginTop: 2 },
   // Form
   content: { padding: 24, gap: 0 },
-  formContainer: { gap: 24, },
   section: { marginBottom: 28 },
   label: {
     color: Colors.slate[400],
@@ -471,12 +543,7 @@ const styles = StyleSheet.create({
     height: 56,
   },
   input: { flex: 1, paddingHorizontal: 16, color: Colors.white, fontFamily: Fonts.sansMedium, height: '100%' },
-  // Botões de ação — dentro do scroll
-  actions: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 8,
-  },
+  actions: { flexDirection: 'row', gap: 12, marginTop: 8 },
   cancelButton: {
     flex: 1,
     height: 56,
@@ -495,7 +562,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   publishButtonText: { color: Colors.black, fontFamily: Fonts.sansBold },
-  // Modals
+  // Modals (date/coach pickers)
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
   pickerSheet: {
     backgroundColor: '#1a1a1a',

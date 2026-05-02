@@ -8,12 +8,12 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from '../components/Icon';
+import SessionEditorSheet from '../components/SessionEditorSheet';
 import { useAuth } from '../src/context';
 import { getWodByDate, setWodForDate } from '../src/services';
 import { Session } from '../src/types';
@@ -48,25 +48,6 @@ const WodEditorScreen: React.FC = () => {
       if (wod && wod.sessions.length > 0) setSessions(wod.sessions);
     }).finally(() => setLoading(false));
   }, [date]);
-
-  const addSession = () => {
-    setSessions((prev) => [
-      ...prev,
-      { id: Date.now().toString(), title: 'Nova Sessão', details: '' },
-    ]);
-  };
-
-  const deleteSession = (id: string) => {
-    setSessions((prev) => prev.filter((s) => s.id !== id));
-  };
-
-  const updateTitle = (id: string, title: string) => {
-    setSessions((prev) => prev.map((s) => (s.id === id ? { ...s, title } : s)));
-  };
-
-  const updateDetails = (id: string, details: string) => {
-    setSessions((prev) => prev.map((s) => (s.id === id ? { ...s, details } : s)));
-  };
 
   const handleSave = async () => {
     if (!appUser || !date) return;
@@ -111,38 +92,7 @@ const WodEditorScreen: React.FC = () => {
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
-            {sessions.map((session) => (
-              <View key={session.id} style={styles.sessionCard}>
-                <View style={styles.sessionHeader}>
-                  <View style={styles.sessionTitleRow}>
-                    <Icon name="drag-indicator" size={24} color={Colors.textMuted} />
-                    <TextInput
-                      style={styles.sessionTitleInput}
-                      value={session.title}
-                      onChangeText={(t) => updateTitle(session.id, t)}
-                      placeholderTextColor={Colors.textMuted}
-                      placeholder="Título da sessão"
-                    />
-                  </View>
-                  <TouchableOpacity onPress={() => deleteSession(session.id)}>
-                    <Icon name="delete" size={22} color={Colors.textMuted} />
-                  </TouchableOpacity>
-                </View>
-                <TextInput
-                  style={styles.sessionDetailsInput}
-                  multiline
-                  value={session.details}
-                  onChangeText={(t) => updateDetails(session.id, t)}
-                  placeholder="Descreva os exercícios..."
-                  placeholderTextColor={Colors.textMuted}
-                />
-              </View>
-            ))}
-
-            <TouchableOpacity style={styles.addSessionButton} onPress={addSession}>
-              <Icon name="add-circle" size={22} color={Colors.primary} />
-              <Text style={styles.addSessionButtonText}>Adicionar Nova Sessão</Text>
-            </TouchableOpacity>
+            <SessionEditorSheet sessions={sessions} onChange={setSessions} />
 
             <View style={styles.actions}>
               <TouchableOpacity style={styles.cancelButton} onPress={() => router.back()}>
@@ -181,52 +131,6 @@ const styles = StyleSheet.create({
   headerTitle: { color: Colors.white, fontFamily: Fonts.sansBold, fontSize: 18 },
   headerDate: { color: Colors.primary, fontFamily: Fonts.sansMedium, fontSize: 12, marginTop: 2 },
   scrollContent: { padding: 24, paddingBottom: 80 },
-  sessionCard: {
-    backgroundColor: Colors.cardDark,
-    borderRadius: 12,
-    padding: 16,
-    borderLeftWidth: 4,
-    borderLeftColor: Colors.primary,
-    marginBottom: 16,
-  },
-  sessionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-  },
-  sessionTitleRow: { flexDirection: 'row', alignItems: 'center', flex: 1 },
-  sessionTitleInput: {
-    color: Colors.white,
-    fontSize: 18,
-    fontFamily: Fonts.sansBold,
-    flex: 1,
-    marginLeft: 8,
-    padding: 0,
-  },
-  sessionDetailsInput: {
-    backgroundColor: Colors.backgroundDark,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-    borderRadius: 8,
-    padding: 16,
-    minHeight: 100,
-    color: Colors.textMuted,
-    fontSize: 14,
-    textAlignVertical: 'top',
-  },
-  addSessionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 16,
-    borderWidth: 2,
-    borderStyle: 'dashed',
-    borderColor: Colors.primary,
-    borderRadius: 12,
-    marginBottom: 28,
-  },
-  addSessionButtonText: { color: Colors.primary, fontFamily: Fonts.sansBold, marginLeft: 8 },
   actions: { flexDirection: 'row', gap: 12 },
   cancelButton: {
     flex: 1,

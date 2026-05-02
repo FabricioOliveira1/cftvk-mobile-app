@@ -4,13 +4,13 @@ import {
   ActivityIndicator,
   Alert,
   RefreshControl,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import ClassListItem from '../../components/ClassListItem';
 import FAB from '../../components/FAB';
 import Icon from '../../components/Icon';

@@ -1047,3 +1047,95 @@ export const syncClassToWellhub = onCall(
     return { wellhubSlotId: slotData.id };
   }
 );
+
+// ---------------------------------------------------------------------------
+// seedClasses — admin: popula classes/ de 2026-05-02 até 2026-12-31
+// Execução única. Não toca a coleção wods/ (WODs já existem).
+// ---------------------------------------------------------------------------
+
+const SEED_SCHEDULE: Record<number, { time: string; coach: string }[]> = {
+  1: [ // Segunda — Thayan
+    { time: '06:00', coach: 'Thayan' }, { time: '08:00', coach: 'Thayan' },
+    { time: '09:00', coach: 'Thayan' }, { time: '15:00', coach: 'Thayan' },
+    { time: '18:00', coach: 'Thayan' }, { time: '19:00', coach: 'Thayan' },
+    { time: '20:00', coach: 'Thayan' },
+  ],
+  2: [ // Terça — Julio Souza
+    { time: '06:00', coach: 'Julio Souza' }, { time: '08:00', coach: 'Julio Souza' },
+    { time: '09:00', coach: 'Julio Souza' }, { time: '15:00', coach: 'Julio Souza' },
+    { time: '18:00', coach: 'Julio Souza' }, { time: '19:00', coach: 'Julio Souza' },
+    { time: '20:00', coach: 'Julio Souza' },
+  ],
+  3: [ // Quarta — Everton (manhã) + Tatiana (tarde)
+    { time: '06:00', coach: 'Everton' }, { time: '08:00', coach: 'Everton' },
+    { time: '09:00', coach: 'Everton' }, { time: '15:00', coach: 'Tatiana' },
+    { time: '18:00', coach: 'Tatiana' }, { time: '19:00', coach: 'Tatiana' },
+    { time: '20:00', coach: 'Tatiana' },
+  ],
+  4: [ // Quinta — Julio Souza
+    { time: '06:00', coach: 'Julio Souza' }, { time: '08:00', coach: 'Julio Souza' },
+    { time: '09:00', coach: 'Julio Souza' }, { time: '15:00', coach: 'Julio Souza' },
+    { time: '18:00', coach: 'Julio Souza' }, { time: '19:00', coach: 'Julio Souza' },
+    { time: '20:00', coach: 'Julio Souza' },
+  ],
+  5: [ // Sexta — Everton (manhã) + Tatiana (15h) + Jansen Moura (tarde)
+    { time: '06:00', coach: 'Everton' }, { time: '08:00', coach: 'Everton' },
+    { time: '09:00', coach: 'Everton' }, { time: '15:00', coach: 'Tatiana' },
+    { time: '18:00', coach: 'Jansen Moura' }, { time: '19:00', coach: 'Jansen Moura' },
+    { time: '20:00', coach: 'Jansen Moura' },
+  ],
+  6: [ // Sábado — Julio Souza
+    { time: '09:00', coach: 'Julio Souza' },
+  ],
+};
+
+export const seedClasses = onCall({ timeoutSeconds: 300 }, async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Login necessário.');
+
+  const callerDoc = await admin.firestore().doc(`users/${request.auth.uid}`).get();
+  if (!callerDoc.exists || callerDoc.data()!.role !== 'admin') {
+    throw new HttpsError('permission-denied', 'Apenas administradores podem usar esta função.');
+  }
+
+  const db = admin.firestore();
+  const uid = request.auth.uid;
+
+  // Gera lista de todos os documentos a criar
+  const toCreate: { date: string; time: string; coach: string }[] = [];
+  const start = new Date(Date.UTC(2026, 4, 2));  // 2026-05-02
+  const end   = new Date(Date.UTC(2026, 11, 31)); // 2026-12-31
+
+  const curr = new Date(start);
+  while (curr <= end) {
+    const dow     = curr.getUTCDay();
+    const y       = curr.getUTCFullYear();
+    const m       = String(curr.getUTCMonth() + 1).padStart(2, '0');
+    const d       = String(curr.getUTCDate()).padStart(2, '0');
+    const dateStr = `${y}-${m}-${d}`;
+
+    const slots = SEED_SCHEDULE[dow] ?? [];
+    for (const slot of slots) {
+      toCreate.push({ date: dateStr, time: slot.time, coach: slot.coach });
+    }
+    curr.setUTCDate(curr.getUTCDate() + 1);
+  }
+
+  // Grava em batches de 400
+  const CHUNK = 400;
+  for (let i = 0; i < toCreate.length; i += CHUNK) {
+    const batch = db.batch();
+    toCreate.slice(i, i + CHUNK).forEach((cls) => {
+      batch.set(db.collection('classes').doc(), {
+        title: 'Crossfit',
+        coach: cls.coach,
+        date: cls.date,
+        time: cls.time,
+        capacity: 15,
+        createdBy: uid,
+      });
+    });
+    await batch.commit();
+  }
+
+  return { created: toCreate.length };
+});

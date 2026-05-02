@@ -1,7 +1,9 @@
 import { Stack, useFocusEffect, useRouter } from 'expo-router';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import React, { useCallback, useState } from 'react';
-import { ActivityIndicator, Alert, SafeAreaView, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from '../../components/Icon';
 import { useAuth } from '../../src/context';
 import { db } from '../../src/services/firebase';
@@ -28,6 +30,7 @@ const ProfileScreen: React.FC = () => {
   const [refreshing, setRefreshing] = useState(true);
   const [wellhubAutoCheckin, setWellhubAutoCheckin] = useState(true);
   const [togglingWellhub, setTogglingWellhub] = useState(false);
+  const [seeding, setSeeding] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -62,6 +65,31 @@ const ProfileScreen: React.FC = () => {
 
   const handleLogout = async () => {
     await signOut();
+  };
+
+  const handleSeedClasses = () => {
+    Alert.alert(
+      'Seed da Agenda',
+      'Isso criará ~1.260 aulas de 02/05 a 31/12/2026 conforme o calendário semanal.\n\nContinuar?',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Criar Aulas',
+          onPress: async () => {
+            setSeeding(true);
+            try {
+              const fn = httpsCallable<unknown, { created: number }>(getFunctions(), 'seedClasses');
+              const result = await fn({});
+              Alert.alert('Concluído', `${result.data.created} aulas criadas com sucesso.`);
+            } catch (e: any) {
+              Alert.alert('Erro', e?.message ?? 'Não foi possível criar as aulas.');
+            } finally {
+              setSeeding(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   const tagColor = roleColor(profileData?.role);
@@ -179,6 +207,23 @@ const ProfileScreen: React.FC = () => {
               />
             </View>
           </View>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Manutenção</Text>
+          <TouchableOpacity style={styles.card} onPress={handleSeedClasses} disabled={seeding}>
+            <View style={styles.cardRow}>
+              <Icon name="event-repeat" size={20} color={Colors.slate[500]} />
+              <View style={styles.cardTextContainer}>
+                <Text style={styles.cardValue}>Seed da Agenda 2026</Text>
+                <Text style={styles.cardLabel}>Cria aulas de 02/05 a 31/12 conforme calendário</Text>
+              </View>
+              {seeding
+                ? <ActivityIndicator size="small" color={Colors.primary} />
+                : <Icon name="chevron-right" size={20} color={Colors.slate[600]} />
+              }
+            </View>
+          </TouchableOpacity>
         </View>
 
         <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
