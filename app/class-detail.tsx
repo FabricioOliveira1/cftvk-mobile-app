@@ -6,13 +6,13 @@ import {
   Alert,
   Modal,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from '../components/Icon';
 import { useAuth } from '../src/context';
 import {
@@ -129,6 +129,7 @@ const ClassDetailScreen: React.FC = () => {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { appUser } = useAuth();
+  const insets = useSafeAreaInsets();
 
   const isInactive =
     appUser?.enrollmentActive === false ||
@@ -409,8 +410,10 @@ const ClassDetailScreen: React.FC = () => {
                     <View style={styles.attendeeInfo}>
                       <Text style={styles.attendeeName}>{attendee.displayName}</Text>
                       {attendee.source === 'wellhub' ? (
-                        <View style={styles.wellhubBadge}>
-                          <Text style={styles.wellhubBadgeText}>Wellhub</Text>
+                        <View style={[styles.wellhubBadge, attendee.status === 'CHECKED_IN' && styles.checkedInBadge]}>
+                          <Text style={styles.wellhubBadgeText}>
+                            {attendee.status === 'CHECKED_IN' ? 'Presente' : 'Wellhub'}
+                          </Text>
                         </View>
                       ) : (
                         <Text style={styles.attendeePlanText}>
@@ -441,7 +444,7 @@ const ClassDetailScreen: React.FC = () => {
 
       {/* Footer dinâmico */}
       {!loading && (
-        <View style={styles.footer}>
+        <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 20) }]}>
           {activeTab === 'treino' ? (
             /* Botões da aba TREINO */
             <View style={styles.trenoFooter}>
@@ -751,6 +754,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 2,
     marginTop: 2,
+  },
+  checkedInBadge: {
+    backgroundColor: Colors.primary,
   },
   wellhubBadgeText: {
     color: '#fff',

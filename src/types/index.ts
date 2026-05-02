@@ -43,7 +43,7 @@ export interface Class {
   wellhubSlotId?: string; // ID do slot no Wellhub após sincronização
 }
 
-export type ReservationStatus = 'BOOKED';
+export type ReservationStatus = 'BOOKED' | 'CHECKED_IN' | 'NO_SHOW';
 
 export type ReservationSource = 'app' | 'wellhub';
 

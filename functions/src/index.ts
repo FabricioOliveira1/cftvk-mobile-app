@@ -920,6 +920,76 @@ export const wellhubWebhook = onRequest(
 );
 
 /**
+ * wellhubCheckinWebhook — HTTP endpoint (público) que recebe eventos de check-in físico do Wellhub.
+ * Configurar URL no Partners Portal: https://us-central1-cftvk-edcff.cloudfunctions.net/wellhubCheckinWebhook
+ *
+ * Responder 200 = pagamento confirmado ao box.
+ * Se o toggle wellhubAutoCheckin estiver OFF em settings/box, responde 400 (bloqueia).
+ */
+export const wellhubCheckinWebhook = onRequest(
+  { secrets: [wellhubSecretKey] },
+  async (req, res) => {
+    const signature = req.headers['x-gympass-signature'] as string | undefined;
+    const rawBody   = JSON.stringify(req.body);
+    const expected  = crypto
+      .createHmac('sha1', wellhubSecretKey.value())
+      .update(rawBody)
+      .digest('hex')
+      .toUpperCase();
+
+    if (!signature || signature !== expected) {
+      res.status(403).send('Invalid signature');
+      return;
+    }
+
+    const db = admin.firestore();
+
+    const settingsSnap = await db.doc('settings/box').get();
+    const autoCheckin  = settingsSnap.exists
+      ? settingsSnap.data()!.wellhubAutoCheckin !== false
+      : true;
+
+    if (!autoCheckin) {
+      res.status(400).send('Auto check-in disabled');
+      return;
+    }
+
+    const { event_data } = req.body as {
+      event_data: {
+        user: { unique_token_id: string };
+        date: string;
+        gym_id: number;
+        pass_id: string;
+        protocol_id: string;
+        protocol_timestamp: string;
+      };
+    };
+
+    const { unique_token_id, date } = event_data.user
+      ? { unique_token_id: event_data.user.unique_token_id, date: event_data.date }
+      : { unique_token_id: '', date: '' };
+
+    if (!unique_token_id || !date) {
+      res.status(200).send('ok');
+      return;
+    }
+
+    const resSnap = await db
+      .collection('reservations')
+      .where('wellhubUserId', '==', unique_token_id)
+      .where('classDate', '==', date)
+      .limit(1)
+      .get();
+
+    if (!resSnap.empty) {
+      await resSnap.docs[0].ref.update({ status: 'CHECKED_IN' });
+    }
+
+    res.status(200).send('ok');
+  }
+);
+
+/**
  * syncClassToWellhub — Registra uma aula do CFTVK como "slot" no Wellhub.
  * Chamada pelo admin. Salva o wellhubSlotId de volta no documento da aula.
  * Parâmetros: { classId: string }

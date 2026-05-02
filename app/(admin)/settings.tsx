@@ -1,7 +1,7 @@
 import { Stack, useFocusEffect, useRouter } from 'expo-router';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import React, { useCallback, useState } from 'react';
-import { ActivityIndicator, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, SafeAreaView, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
 import Icon from '../../components/Icon';
 import { useAuth } from '../../src/context';
 import { db } from '../../src/services/firebase';
@@ -26,17 +26,39 @@ const ProfileScreen: React.FC = () => {
 
   const [profileData, setProfileData] = useState<AppUser | null>(null);
   const [refreshing, setRefreshing] = useState(true);
+  const [wellhubAutoCheckin, setWellhubAutoCheckin] = useState(true);
+  const [togglingWellhub, setTogglingWellhub] = useState(false);
+
   useFocusEffect(
     useCallback(() => {
       if (!appUser?.id) return;
       setRefreshing(true);
-      getDoc(doc(db, 'users', appUser.id))
-        .then((snap) => {
-          if (snap.exists()) setProfileData({ id: snap.id, ...snap.data() } as AppUser);
-        })
-        .finally(() => setRefreshing(false));
+
+      Promise.all([
+        getDoc(doc(db, 'users', appUser.id)),
+        getDoc(doc(db, 'settings', 'box')),
+      ]).then(([userSnap, settingsSnap]) => {
+        if (userSnap.exists()) setProfileData({ id: userSnap.id, ...userSnap.data() } as AppUser);
+        if (settingsSnap.exists()) {
+          const val = settingsSnap.data().wellhubAutoCheckin;
+          setWellhubAutoCheckin(val !== false); // default true se campo ausente
+        }
+      }).finally(() => setRefreshing(false));
     }, [appUser?.id])
   );
+
+  const handleWellhubToggle = async (value: boolean) => {
+    setTogglingWellhub(true);
+    setWellhubAutoCheckin(value);
+    try {
+      await setDoc(doc(db, 'settings', 'box'), { wellhubAutoCheckin: value }, { merge: true });
+    } catch {
+      setWellhubAutoCheckin(!value);
+      Alert.alert('Erro', 'Não foi possível salvar a configuração. Tente novamente.');
+    } finally {
+      setTogglingWellhub(false);
+    }
+  };
 
   const handleLogout = async () => {
     await signOut();
@@ -133,6 +155,30 @@ const ProfileScreen: React.FC = () => {
               <Icon name="chevron-right" size={20} color={Colors.slate[600]} />
             </View>
           </TouchableOpacity>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Integrações</Text>
+          <View style={styles.card}>
+            <View style={[styles.cardRow, { justifyContent: 'space-between' }]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                <Icon name="fitness-center" size={20} color={Colors.slate[500]} />
+                <View style={styles.cardTextContainer}>
+                  <Text style={styles.cardValue}>Wellhub — Auto Check-in</Text>
+                  <Text style={styles.cardLabel}>
+                    {wellhubAutoCheckin ? 'Ativo — check-ins confirmados automaticamente' : 'Pausado — check-ins bloqueados'}
+                  </Text>
+                </View>
+              </View>
+              <Switch
+                value={wellhubAutoCheckin}
+                onValueChange={handleWellhubToggle}
+                disabled={togglingWellhub}
+                trackColor={{ false: Colors.slate[700], true: `${Colors.primary}80` }}
+                thumbColor={wellhubAutoCheckin ? Colors.primary : Colors.slate[400]}
+              />
+            </View>
+          </View>
         </View>
 
         <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
