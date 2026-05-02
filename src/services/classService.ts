@@ -14,7 +14,9 @@ const functions = getFunctions();
 export async function getClassesByDate(date: string): Promise<Class[]> {
   const q = query(collection(db, 'classes'), where('date', '==', date));
   const snap = await getDocs(q);
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Class));
+  return snap.docs
+    .map((d) => ({ id: d.id, ...d.data() } as Class))
+    .sort((a, b) => a.time.localeCompare(b.time));
 }
 
 export async function createClass(
