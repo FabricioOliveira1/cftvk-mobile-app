@@ -314,7 +314,7 @@ const StudentDashboardScreen: React.FC = () => {
                   style={styles.newPRBtn}
                   onPress={() => router.push('/prs')}
                 >
-                  <Text style={styles.newPRBtnText}>Novo PR</Text>
+                  <Text style={styles.newPRBtnText}>Ver PRs</Text>
                 </TouchableOpacity>
               </View>
             </View>
