@@ -169,6 +169,29 @@ Para reservas Wellhub, `userId` é definido como `wellhub_<unique_token>` (não 
 
 ---
 
+## ⏳ CHECKPOINT — 2026-04-19
+
+### Descobertas desta sessão (estudo do fluxo)
+
+**Credenciais sandbox recebidas em 2026-04-17:**
+- `gym_id`: 387
+- `api_key` (Bearer Token sandbox): JWT recebido por email
+
+**Análise do email do suporte Wellhub — duas integrações distintas:**
+
+| Integração | API | Propósito |
+|---|---|---|
+| Booking API | `/booking/v2/...` | Reservas de aulas (já implementado) |
+| Access Control API | `/checkin/...` | Check-in físico + validação de ticket |
+
+**Status atual do código:**
+- Booking API: ✅ implementado (webhook + RESERVED/REJECTED)
+- Access Control API: ✅ implementado (wellhubCheckinWebhook + toggle settings)
+- Deploy: ❌ não realizado (aguardando app estável em produção)
+
+---
+
+
 ## ✅ CHECKPOINT — 2026-03-29
 
 ### O que foi implementado nesta sessão
