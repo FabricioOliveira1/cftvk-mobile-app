@@ -1,4 +1,5 @@
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { Image } from 'expo-image';
 import { doc, getDoc } from 'firebase/firestore';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
@@ -33,6 +34,7 @@ import { Colors, Fonts } from '../theme';
 interface AttendeeWithName extends Reservation {
   displayName: string;
   plan?: string;
+  photoURL?: string;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -173,12 +175,14 @@ const ClassDetailScreen: React.FC = () => {
       const withNames = await Promise.all(
         reservations.map(async (r) => {
           if (r.source === 'wellhub') {
-            return { ...r, displayName: r.wellhubUserName ?? 'Usuário Wellhub', plan: undefined };
+            return { ...r, displayName: r.wellhubUserName ?? 'Usuário Wellhub', plan: undefined, photoURL: undefined };
           }
           const userSnap = await getDoc(doc(db, 'users', r.userId));
-          const name = userSnap.exists() ? (userSnap.data().name as string) : 'Usuário';
-          const plan = userSnap.exists() ? (userSnap.data().plan as string | undefined) : undefined;
-          return { ...r, displayName: name, plan };
+          const data = userSnap.exists() ? userSnap.data() : null;
+          const name = data?.name as string ?? 'Usuário';
+          const plan = data?.plan as string | undefined;
+          const photoURL = data?.photoURL as string | undefined;
+          return { ...r, displayName: name, plan, photoURL };
         })
       );
       setAttendees(withNames);
@@ -398,7 +402,15 @@ const ClassDetailScreen: React.FC = () => {
                   >
                     {/* Left: avatar */}
                     <View style={[styles.attendeeAvatar, isMe && styles.attendeeAvatarMe]}>
-                      <Icon name="person" size={24} color={isMe ? Colors.primary : Colors.textMuted} />
+                      {attendee.photoURL ? (
+                        <Image
+                          source={{ uri: attendee.photoURL }}
+                          style={{ width: 44, height: 44, borderRadius: 22 }}
+                          contentFit="cover"
+                        />
+                      ) : (
+                        <Icon name="person" size={24} color={isMe ? Colors.primary : Colors.textMuted} />
+                      )}
                       {isMe && (
                         <View style={styles.euBadge}>
                           <Text style={styles.euBadgeText}>EU</Text>
@@ -406,7 +418,7 @@ const ClassDetailScreen: React.FC = () => {
                       )}
                     </View>
 
-                    {/* Middle: name + plano / badge Wellhub */}
+                    {/* Middle: name + plano (só admin) / badge Wellhub */}
                     <View style={styles.attendeeInfo}>
                       <Text style={styles.attendeeName}>{attendee.displayName}</Text>
                       {attendee.source === 'wellhub' ? (
@@ -415,11 +427,11 @@ const ClassDetailScreen: React.FC = () => {
                             {attendee.status === 'CHECKED_IN' ? 'Presente' : 'Wellhub'}
                           </Text>
                         </View>
-                      ) : (
+                      ) : appUser?.role === 'admin' ? (
                         <Text style={styles.attendeePlanText}>
                           {attendee.plan ? `Aluno ${attendee.plan}` : 'Aluno'}
                         </Text>
-                      )}
+                      ) : null}
                     </View>
 
                     {/* Right: ações do admin */}
