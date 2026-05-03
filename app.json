@@ -16,6 +16,12 @@
       "**/*"
     ],
     "newArchEnabled": true,
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/afc574ba-db53-45f5-8104-b01335583666"
+    },
     "ios": {
       "supportsTablet": true
     },
@@ -36,6 +42,7 @@
     },
     "plugins": [
       "expo-router",
+      "expo-updates",
       [
         "expo-image-picker",
         {
