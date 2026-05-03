@@ -37,6 +37,13 @@
     "plugins": [
       "expo-router",
       [
+        "expo-image-picker",
+        {
+          "photosPermission": "Permitir acesso à galeria de fotos para atualizar seu perfil.",
+          "cameraPermission": "Permitir acesso à câmera para tirar uma foto de perfil."
+        }
+      ],
+      [
         "expo-splash-screen",
         {
           "image": "./assets/images/logo.png",

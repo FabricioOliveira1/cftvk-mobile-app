@@ -4,3 +4,4 @@ export * from './reservationService';
 export * from './memberService';
 export * from './prService';
 export * from './wodService';
+export * from './photoService';

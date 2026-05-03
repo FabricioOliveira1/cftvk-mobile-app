@@ -22,6 +22,7 @@ export interface AppUser {
   phone?: string;
   birthDate?: string;
   mustChangePassword?: boolean;
+  photoURL?: string;
   createdAt: Timestamp;
 }
 

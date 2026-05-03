@@ -1,7 +1,9 @@
 import { Stack, useFocusEffect, useRouter } from 'expo-router';
+import * as ImagePicker from 'expo-image-picker';
 import { Timestamp, doc, getDoc } from 'firebase/firestore';
 import React, { useCallback, useState } from 'react';
 import {
+  Alert,
   ActivityIndicator,
   ScrollView,
   StyleSheet,
@@ -11,8 +13,10 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from '../../components/Icon';
+import UserAvatar from '../../components/UserAvatar';
 import { useAuth } from '../../src/context';
 import { db } from '../../src/services/firebase';
+import { uploadProfilePhoto } from '../../src/services/photoService';
 import { AppUser } from '../../src/types';
 import { Colors, Fonts } from '../../theme';
 
@@ -49,6 +53,7 @@ const StudentProfileScreen: React.FC = () => {
 
   const [profileData, setProfileData] = useState<AppUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -61,6 +66,52 @@ const StudentProfileScreen: React.FC = () => {
         .finally(() => setLoading(false));
     }, [appUser?.id])
   );
+
+  const launchPicker = async (source: 'camera' | 'gallery') => {
+    const options: ImagePicker.ImagePickerOptions = {
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.7,
+    };
+
+    let result: ImagePicker.ImagePickerResult;
+    if (source === 'camera') {
+      const perm = await ImagePicker.requestCameraPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert('Permissão necessária', 'Permita acesso à câmera nas configurações do dispositivo.');
+        return;
+      }
+      result = await ImagePicker.launchCameraAsync(options);
+    } else {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert('Permissão necessária', 'Permita acesso à galeria nas configurações do dispositivo.');
+        return;
+      }
+      result = await ImagePicker.launchImageLibraryAsync(options);
+    }
+
+    if (!result.canceled && appUser) {
+      setUploading(true);
+      try {
+        const url = await uploadProfilePhoto(appUser.id, result.assets[0].uri);
+        setProfileData((prev) => (prev ? { ...prev, photoURL: url } : prev));
+      } catch {
+        Alert.alert('Erro', 'Não foi possível atualizar a foto. Tente novamente.');
+      } finally {
+        setUploading(false);
+      }
+    }
+  };
+
+  const handlePickPhoto = () => {
+    Alert.alert('Foto de perfil', 'Como deseja atualizar sua foto?', [
+      { text: 'Câmera', onPress: () => launchPicker('camera') },
+      { text: 'Galeria', onPress: () => launchPicker('gallery') },
+      { text: 'Cancelar', style: 'cancel' },
+    ]);
+  };
 
   const tagColor = roleColor(profileData?.role);
 
@@ -80,14 +131,12 @@ const StudentProfileScreen: React.FC = () => {
 
         {/* Avatar + nome */}
         <View style={styles.profileHeader}>
-          <View style={styles.avatarContainer}>
-            <View style={styles.avatarPlaceholder}>
-              <Icon name="person" size={48} color={Colors.textMuted} />
-            </View>
-            <View style={styles.verifiedBadge}>
-              <Icon name="verified" size={16} color={Colors.backgroundDark} />
-            </View>
-          </View>
+          <UserAvatar
+            photoURL={profileData?.photoURL}
+            size={112}
+            onPress={handlePickPhoto}
+            uploading={uploading}
+          />
           <Text style={styles.name}>{profileData?.name ?? '—'}</Text>
           <View style={[styles.tag, { backgroundColor: `${tagColor}20`, borderColor: `${tagColor}30` }]}>
             <Text style={[styles.tagText, { color: tagColor }]}>{roleLabel(profileData?.role)}</Text>
@@ -187,9 +236,6 @@ const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: Colors.backgroundDark },
   container: { padding: 24, paddingBottom: 80 },
   profileHeader: { alignItems: 'center', marginBottom: 32 },
-  avatarContainer: { position: 'relative' },
-  avatarPlaceholder: { width: 112, height: 112, borderRadius: 56, borderWidth: 2, borderColor: Colors.primary, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.surfaceDark },
-  verifiedBadge: { position: 'absolute', bottom: 0, right: 0, width: 32, height: 32, borderRadius: 16, backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center', borderWidth: 4, borderColor: Colors.backgroundDark },
   name: { marginTop: 16, fontSize: 24, fontFamily: Fonts.sansBold, color: Colors.white },
   tag: { marginTop: 4, paddingHorizontal: 12, paddingVertical: 4, borderRadius: 99, borderWidth: 1 },
   tagText: { fontSize: 10, fontFamily: Fonts.sansBold, textTransform: 'uppercase', letterSpacing: 1 },

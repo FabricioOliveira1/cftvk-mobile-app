@@ -4,8 +4,7 @@ import { initializeAuth, getReactNativePersistence } from "firebase/auth";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { initializeFirestore, persistentLocalCache } from "firebase/firestore";
 import { getFunctions } from "firebase/functions";
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
+import { getStorage } from "firebase/storage";
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
@@ -27,5 +26,6 @@ export const db = initializeFirestore(app, {
   localCache: persistentLocalCache(),
 });
 export const functions = getFunctions(app);
+export const storage = getStorage(app);
 
 console.log('Firebase initialized');

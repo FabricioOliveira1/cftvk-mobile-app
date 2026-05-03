@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from '../components/Icon';
+import UserAvatar from '../components/UserAvatar';
 import { db } from '../src/services/firebase';
 import { AppUser, UserRole } from '../src/types';
 import { Colors, Fonts } from '../theme';
@@ -78,9 +79,7 @@ const MemberProfileScreen: React.FC = () => {
         <ScrollView contentContainerStyle={styles.container}>
           <View style={styles.profileHeader}>
             <View style={styles.avatarContainer}>
-              <View style={styles.avatarPlaceholder}>
-                <Icon name="person" size={48} color={Colors.textMuted} />
-              </View>
+              <UserAvatar photoURL={member.photoURL} size={112} />
               <View style={styles.verifiedBadge}>
                 <Icon name="verified" size={16} color={Colors.backgroundDark} />
               </View>
@@ -181,7 +180,6 @@ const styles = StyleSheet.create({
   emptyText: { color: Colors.textMuted, fontSize: 14 },
   profileHeader: { alignItems: 'center', marginBottom: 24 },
   avatarContainer: { position: 'relative' },
-  avatarPlaceholder: { width: 112, height: 112, borderRadius: 56, borderWidth: 2, borderColor: Colors.primary, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.surfaceDark },
   verifiedBadge: { position: 'absolute', bottom: 0, right: 0, width: 32, height: 32, borderRadius: 16, backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center', borderWidth: 4, borderColor: Colors.backgroundDark },
   name: { marginTop: 16, fontSize: 24, fontFamily: Fonts.sansBold, color: Colors.white },
   tag: { marginTop: 4, paddingHorizontal: 12, paddingVertical: 4, borderRadius: 99, borderWidth: 1 },
