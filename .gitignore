@@ -59,7 +59,7 @@ functions/*.js
 functions/*.json
 *.json
 !.commitlintrc.json
-google-services.json
+!google-services.json
 !package.json
 !app.json
 !eas.json

@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "685906532982",
+    "project_id": "cftvk-edcff",
+    "storage_bucket": "cftvk-edcff.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:685906532982:android:7cbce9f0899c89861e1d57",
+        "android_client_info": {
+          "package_name": "com.fabricioliveiradev.cftvkapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBL14InLKJD8RvHO_752ZYRuggxuRK9K6o"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:685906532982:android:eea3d96e0f0194f21e1d57",
+        "android_client_info": {
+          "package_name": "com.impulso.cftvk"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBL14InLKJD8RvHO_752ZYRuggxuRK9K6o"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
